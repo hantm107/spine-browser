@@ -58,8 +58,8 @@ async function run(){
   assert.equal(await evaluate('playerHost.querySelector("canvas").click();activePlayer.paused'),false);
   checks.push('Packaged preview canvas toggles pause and resume');
   await evaluate(`(async()=>{const file=selectedProject;allProjects=Array.from({length:4},(_,i)=>({...file,id:'packaged-navigation-'+i}));await selectProject(allProjects[0]);projectList.focus();for(let i=0;i<2;i++)projectList.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));})()`);
-  const pending=await evaluate('({selected:selectedProject.id,highlight:projectList.querySelector(".selected").dataset.id})');
-  assert.equal(pending.selected,'packaged-navigation-0');assert.equal(pending.highlight,'packaged-navigation-2');
+  const navigationState=await evaluate('({selected:selectedProject.id,highlight:projectList.querySelector(".selected").dataset.id})');
+  assert.equal(navigationState.selected,'packaged-navigation-0');assert.equal(navigationState.highlight,'packaged-navigation-2');
   await wait(300);assert.equal(await evaluate('selectedProject.id'),'packaged-navigation-2');
   checks.push('Packaged arrow navigation highlights immediately and delays preview loading');
   const folderA=path.join(root,'tests/fixtures/3.2'),folderB=path.join(root,'tests/fixtures/3.4');
