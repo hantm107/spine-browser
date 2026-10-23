@@ -63,7 +63,7 @@ class LegacySpinePlayer {
     stateData.defaultMix = 0.2;
     this.animationState = new s.AnimationState(stateData);
     this.makeControls();
-    const name = this.options.chooseAnimation(data.animations.map(animation => animation.name));
+    const name = this.options.chooseAnimation(data.animations.map(animation => animation.name),data.animations);
     if (name) this.setAnimation(name);
     else this.fit();
     this.lastTime = performance.now();

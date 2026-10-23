@@ -58,7 +58,7 @@ async function run(){
     }
     assert.equal(state.version,'3.8.75');assert.ok(state.time>0.1);assert.match(state.note,/best-effort/);
     await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent(0).animation.duration)/2);activePlayer.paused=true');await wait(100);
-    checks.push('Actual user 3.8.75 JSON asset previews from portable executable');
+    checks.push('Actual user 3.8.75 asset previews from portable executable');
   }
   fs.mkdirSync(path.join(root,'.temp'),{recursive:true});
   const capture=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'.temp/packaged-preview.png'),Buffer.from(capture.data,'base64'));

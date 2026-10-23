@@ -193,7 +193,9 @@ function updateDetailPanel(project) {
   openSpineBtn.disabled = !project;
 }
 
-function chooseAnimationName(names) {
+function chooseAnimationName(names, animations = []) {
+  const animated = new Set(animations.filter(animation=>animation.duration>0).map(animation=>animation.name));
+  if(animated.size)names=names.filter(name=>animated.has(name));
   for (const preferred of ['idle', 'run', 'walk', 'attack', 'jump', 'dance', 'skill', 'hit']) {
     const match = names.find(name => name.toLowerCase() === preferred);
     if (match) return match;
@@ -257,7 +259,7 @@ async function setupPreview(project) {
     let playerOptions;
     const success = (player, name) => {
       if (!current()) return;
-      let animation = name || chooseAnimationName(player.skeleton.data.animations.map(a => a.name));
+      let animation = name || chooseAnimationName(player.skeleton.data.animations.map(a => a.name),player.skeleton.data.animations);
       if (version.kind === 'player' && animation) {
         playerOptions.animation = animation;
         player.setAnimation(animation, true);

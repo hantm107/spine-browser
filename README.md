@@ -9,7 +9,7 @@ npm install
 npm start
 ```
 
-To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.1.2-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
+To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.1.3-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
 
 `node tests/packaged-smoke.cjs` launches the generated executable with a temporary user profile and checks JSON and binary playback using the checked-in fixtures. It saves results and a screenshot under `.temp/`.
 
@@ -37,4 +37,4 @@ The original project and export files are never overwritten. The 3.0-3.5 binary 
 
 Run `npm test` for asset-resolution/version/scanning regression tests and actual Electron playback/UI checks. The Electron tests briefly show a test window to verify animation advances, then close it. Verification results and a sample screenshot are saved in `.temp/`.
 
-Spine 3.8.75 JSON exports receive best-effort preview support. The upstream runtime rejects this editor version because of known export bugs (https://github.com/EsotericSoftware/spine-runtimes/issues/2428). Only the JSON version guard is relaxed: normal parsing still applies, original version metadata is preserved, source files are never rewritten, and the preview identifies the compatibility limitation. The binary guard remains unchanged. Verified locally with lrsc502 and lrsc532; other damaged 3.8.75 exports may still require re-exporting.
+Spine 3.8.75 JSON and binary exports receive best-effort preview support. The upstream runtime rejects this editor version because of known export bugs (https://github.com/EsotericSoftware/spine-runtimes/issues/2428). The version guards are relaxed while the standard data readers remain unchanged. Original version metadata is preserved and source files are never rewritten. Verified locally with lrsc502/lrsc532 JSON and the 233/228 binary exports; damaged files may still require re-exporting. Default playback skips zero-duration placeholders when animated clips are available.

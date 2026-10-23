@@ -4142,8 +4142,8 @@ var spine;
 			var input = new BinaryInput(binary);
 			skeletonData.hash = input.readString();
 			skeletonData.version = input.readString();
-			if ("3.8.75" == skeletonData.version)
-				throw new Error("Unsupported skeleton data, please export with a newer version of Spine.");
+			// Best-effort inspection of archived 3.8.75 binary exports, with
+			// the original version retained and the standard data reader unchanged.
 			skeletonData.x = input.readFloat();
 			skeletonData.y = input.readFloat();
 			skeletonData.width = input.readFloat();
@@ -5555,7 +5555,7 @@ var spine;
 				skeletonData.hash = skeletonMap.hash;
 				skeletonData.version = skeletonMap.spine;
 				// Allow best-effort JSON inspection for archived 3.8.75 exports.
-				// The normal schema/attachment readers still validate the data. Binary guard is retained.
+				// The normal schema/attachment readers still validate the data.
 				skeletonData.x = skeletonMap.x;
 				skeletonData.y = skeletonMap.y;
 				skeletonData.width = skeletonMap.width;

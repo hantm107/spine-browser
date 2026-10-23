@@ -75,6 +75,7 @@ vm.runInNewContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), {
 }, { filename: path.join(root, 'main.js') });
 
 async function run() {
+  await check('default animation skips empty run placeholders when animated clips exist', "chooseAnimationName(['run','action1'],[{name:'run',duration:0},{name:'action1',duration:1}])",r=>assert.equal(r,'action1'));
   await check('runtime catalog and modern player loaded', `({modern:!!window.spine?.SpinePlayer,series:Object.keys(window.spineRuntimeCatalog),css:[...document.styleSheets].map(s=>s.href)})`, r => { assert.ok(r.modern); assert.equal(r.series.length, 13); assert.ok(r.css.some(s => s.endsWith('spine-player.css'))); });
   electron.ipcMain.removeHandler('select-folder');
   electron.ipcMain.handle('select-folder', () => path.dirname(sample));
@@ -135,14 +136,22 @@ async function run() {
   await evaluate(`selectProject(${project(legacyJsonFile)})`);
   await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
   await check('3.8.75 JSON loads without changing its version and reports best effort', '({version:activePlayer.skeleton.data.version,note:previewText.textContent,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})',r=>{assert.equal(r.version,'3.8.75');assert.match(r.note,/best-effort/);assert.equal(r.finite,true);});
-  await check('3.8.75 binary guard remains intact', `(()=>{try{new spine38.SkeletonBinary({}).readSkeletonData(Uint8Array.from([0,7,...Array.from('3.8.75',c=>c.charCodeAt(0))]));return false;}catch(error){return /Unsupported skeleton data/.test(error.message);}})()`,r=>assert.equal(r,true));
+  // Reference fixture: only the same-length version header is changed; user files stay read-only.
+  const legacyBinaryFile=legacyJsonFile.replace('.json','.skel');
+  const binary3875=Buffer.from(fs.readFileSync(path.join(root,'tests/fixtures/3.8/spineboy-pro.skel')));
+  const versionOffset=binary3875.indexOf(Buffer.from('3.8.55'));assert.ok(versionOffset>=0);
+  Buffer.from('3.8.75').copy(binary3875,versionOffset);fs.writeFileSync(legacyBinaryFile,binary3875);
+  await evaluate(`selectProject(${project(legacyBinaryFile)})`);
+  await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
+  await check('3.8.75 binary loads without changing its version and reports best effort','({version:activePlayer.skeleton.data.version,note:previewText.textContent,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})',r=>{assert.equal(r.version,'3.8.75');assert.match(r.note,/best-effort/);assert.equal(r.finite,true);});
+
   if (process.env.SPINE_TEST_ASSET_FOLDER) {
     electron.ipcMain.removeHandler('select-folder');
     electron.ipcMain.handle('select-folder', () => process.env.SPINE_TEST_ASSET_FOLDER);
     await evaluate('if (!hideSkelCheckbox.checked) hideSkelCheckbox.click()');
     await evaluate('chooseFolder()');
     await until("!!activePlayer?.skeleton && (()=>{const track=activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0);return (track?.trackTime??track?.time)>0.1})()");
-    await check('user asset plays through normal folder selection', `({file:selectedProject.fullPath,project:selectedProject.isDirectSpineFile,version:activePlayer.skeleton.data.version,animation:(activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.name,paused:activePlayer.paused,status:previewText.textContent})`, r=>{assert.ok(r.project);assert.ok(r.version);assert.ok(r.animation);assert.equal(r.paused,false);});
+    await check('user asset plays through normal folder selection', `({file:selectedProject.fullPath,project:selectedProject.isDirectSpineFile,version:activePlayer.skeleton.data.version,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY)),animation:(activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.name,paused:activePlayer.paused,status:previewText.textContent})`, r=>{assert.ok(r.project);assert.ok(r.version);assert.ok(r.animation);assert.equal(r.paused,false);assert.equal(r.finite,true);});
     await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true');await wait(100);
     fs.writeFileSync(path.join(root, '.temp/user-asset-verification.png'), (await win.webContents.capturePage()).toPNG());
   }
