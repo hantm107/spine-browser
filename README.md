@@ -17,7 +17,7 @@ npm install
 npm start
 ```
 
-To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.2.0-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
+To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.3.0-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
 
 `node tests/packaged-smoke.cjs` launches the generated executable with a temporary user profile and checks JSON and binary playback using the checked-in fixtures. It saves results and a screenshot under `.temp/`.
 

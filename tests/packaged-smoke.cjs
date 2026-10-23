@@ -52,6 +52,16 @@ async function run(){
     assert.ok(state.version?.startsWith(series),JSON.stringify(state));assert.ok(state.time>0.05);assert.ok(state.buttons>0);
     checks.push(`${series} ${ext} plays from packaged runtime`);console.log('PASS',checks.at(-1));
   }
+  assert.equal(await evaluate('typeof SpineBlendCompatibility.configure'),'function');
+  checks.push('Packaged blending compatibility module loads');
+  assert.equal(await evaluate('activePlayer.paused=false;playerHost.querySelector("canvas").click();activePlayer.paused'),true);
+  assert.equal(await evaluate('playerHost.querySelector("canvas").click();activePlayer.paused'),false);
+  checks.push('Packaged preview canvas toggles pause and resume');
+  await evaluate(`(async()=>{const file=selectedProject;allProjects=Array.from({length:4},(_,i)=>({...file,id:'packaged-navigation-'+i}));await selectProject(allProjects[0]);projectList.focus();for(let i=0;i<2;i++)projectList.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));})()`);
+  const pending=await evaluate('({selected:selectedProject.id,highlight:projectList.querySelector(".selected").dataset.id})');
+  assert.equal(pending.selected,'packaged-navigation-0');assert.equal(pending.highlight,'packaged-navigation-2');
+  await wait(300);assert.equal(await evaluate('selectedProject.id'),'packaged-navigation-2');
+  checks.push('Packaged arrow navigation highlights immediately and delays preview loading');
   const folderA=path.join(root,'tests/fixtures/3.2'),folderB=path.join(root,'tests/fixtures/3.4');
   await evaluate(`(async()=>{await chooseFolder(${JSON.stringify(folderA)});document.querySelector('.favorite-button').click();favoritesOnly.checked=true;await favoritesOnly.onchange();await chooseFolder(${JSON.stringify(folderB)});})()`);
   const favorite=await evaluate('({folder:currentFolder,path:selectedProject.fullPath,count:filteredProjects().length})');
