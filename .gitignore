@@ -1,0 +1,26 @@
+# Installed dependencies
+/node_modules/
+
+# Generated verification and build output
+/.temp/
+/out/
+/dist/
+/tmp_*/
+
+# Local editor configuration and crash reports
+/.vscode/
+hs_err_pid*.log
+replay_pid*.log
+*.stackdump
+
+# Local environment and signing credentials
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+
+# Local Spine editor state
+/藐熓㏞含奦/
+
+/snapshots/

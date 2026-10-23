@@ -1,0 +1,29 @@
+appId: local.spine-browser
+productName: Spine Browser
+asar: true
+directories:
+  output: dist
+files:
+  - main.js
+  - preload.js
+  - project-assets.js
+  - asset-groups.js
+  - runtime-catalog.js
+  - runtime-loader.js
+  - legacy-player.js
+  - old-spine-decoder.js
+  - playback-controls.js
+  - renderer.js
+  - index.html
+  - style.css
+  - package.json
+  - README.md
+  - vendor/**/*
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  signAndEditExecutable: false
+portable:
+  artifactName: Spine-Browser-${version}-portable.exe

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spine Browser</title>
+    <link rel="stylesheet" href="./node_modules/@esotericsoftware/spine-player/dist/spine-player.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="toolbar">
+          <button id="chooseFolderBtn">Choose folder</button>
+        </div>
+
+        <select id="recentFolders" aria-label="Recent folders"><option value="">Recent folders</option></select>
+        <button id="rescanBtn" class="quiet">Rescan folder</button>
+        <div class="library-options"><label><input id="favoritesOnly" type="checkbox"> Favorites only</label><label>View <select id="libraryView"><option value="list">List</option><option value="grid">Grid</option></select></label></div>
+        <label class="search-label" for="searchInput">Search</label>
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Find a Spine project..."
+          autocomplete="off"
+        />
+
+        <label class="file-filter">
+          <input id="hideSkelCheckbox" type="checkbox" />
+          Hide .skel files
+        </label>
+
+        <div id="summary" class="summary">No folder selected</div>
+
+        <ul id="projectList" class="project-list"></ul>
+      </aside>
+
+      <main class="detail-panel">
+        <div id="projectHeader" class="project-header">
+          <h1>Spine Browser</h1>
+          <p>Select a folder to begin.</p>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-card">
+            <span class="label">Name</span>
+            <strong id="detailName">-</strong>
+          </div>
+          <div class="meta-card">
+            <span class="label">Folder</span>
+            <strong id="detailFolder">-</strong>
+          </div>
+          <div class="meta-card">
+            <span class="label">File</span>
+            <strong id="detailFile">-</strong>
+          </div>
+          <div class="meta-card">
+            <span class="label">Size</span>
+            <strong id="detailSize">-</strong>
+          </div>
+        </div>
+
+        <details id="relatedFiles"><summary>Related files</summary><div id="relatedFileList"></div></details>
+        <div class="preview-card">
+          <h2>Preview</h2>
+          <div class="preview-status" role="status" aria-live="polite">
+            <p class="preview-title" id="previewTitle">No file selected</p>
+            <p class="preview-text" id="previewText">
+              Select an exported skeleton and atlas to play an animation.
+            </p>
+          </div>
+          <div id="previewBox" class="preview-box"><div id="playerHost" class="player-host"></div></div>
+          <div id="playbackControls" hidden></div>
+        </div>
+
+        <div class="actions">
+          <button id="openExplorerBtn" class="primary" disabled>
+            Open in Explorer
+          </button>
+          <button id="openSpineBtn" class="secondary" disabled>
+            Open in Spine
+          </button>
+        </div>
+      </main>
+    </div>
+
+    <script src="./node_modules/@esotericsoftware/spine-player/dist/iife/spine-player.js"></script>
+    <script src="runtime-catalog.js"></script>
+    <script src="runtime-loader.js"></script>
+    <script src="legacy-player.js"></script>
+    <script src="playback-controls.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>
