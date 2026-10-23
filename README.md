@@ -2,6 +2,8 @@
 
 A local Electron browser for Spine editor projects and exported animations.
 
+The original app code is covered by the repository's [MIT license](LICENSE). Bundled and derived Spine runtime code, compatibility readers, and upstream sample assets retain their upstream license terms; see [vendor/README.md](vendor/README.md) and [tests/fixtures/README.md](tests/fixtures/README.md). The MIT license does not replace those third-party terms.
+
 ```sh
 npm install
 npm start

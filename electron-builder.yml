@@ -18,6 +18,7 @@ files:
   - style.css
   - package.json
   - README.md
+  - LICENSE
   - vendor/**/*
 win:
   target:
