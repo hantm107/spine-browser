@@ -2,6 +2,10 @@
 
 A local Electron browser for Spine editor projects and exported animations.
 
+Use Left/Right to browse adjacent files and Up/Down to move between visual rows in the library. Highlighting updates immediately; the preview loads after 200 ms without another arrow press, so holding a key skips intermediate loads. Navigation follows the current search/category filters and scrolls the highlighted card into view. Arrow keys retain their usual behavior in text fields and controls. Click the animation canvas to pause/resume, or use the existing playback buttons.
+
+Preview blending supports Normal, Additive, Multiply, and Screen with straight-alpha and premultiplied atlas textures. Textures are normalized to premultiplied alpha in GPU memory per atlas page (`pma: true` pages are not multiplied twice). Older Screen blending uses the corrected destination-color factor. The source atlas, textures, and skeleton blend settings are never rewritten.
+
 Legacy **Spine 2.0 and 2.1** JSON and binary skeleton exports are supported alongside the existing 3.x and 4.x runtimes. Native 2.x animation behavior includes bone flips, IK, weighted meshes, and FFD. Related `.spine` projects can preview their accompanying exports as usual. Unversioned legacy JSON uses a clearly labeled 2.1 compatibility fallback; unversioned/`Dev` binary exports cannot be safely identified and remain unsupported. Reference coverage and archive-specific limitations are documented in [vendor/README.md](vendor/README.md) and [tests/fixtures/README.md](tests/fixtures/README.md). Original assets are never rewritten.
 
 The library uses the left half of the window, with a dedicated category column and a full-height file browser beside it. List and grid views automatically add columns as space permits. The smaller animation preview and playback controls occupy the right half.

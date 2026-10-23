@@ -13,6 +13,7 @@ files:
   - runtime-catalog.js
   - runtime-loader.js
   - legacy-player.js
+  - blend-compatibility.js
   - old-spine-decoder.js
   - playback-controls.js
   - renderer.js

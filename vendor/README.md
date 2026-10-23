@@ -1,5 +1,9 @@
 # Spine compatibility runtimes
 
+`blend-compatibility.js` adapts texture uploads to a consistent PMA render pipeline across the bundled runtimes. Source format comes from each page's `pma` metadata (omitted means straight alpha, per the [official atlas format](https://esotericsoftware.com/spine-atlas-format)). Straight textures are premultiplied on GPU upload; existing PMA textures are uploaded unchanged. Texture updates/context restoration retain their original source-format flag, and WebGL unpack state is restored after each upload. Older atlas readers receive text with just the unsupported `pma` page property removed after modern metadata parsing. Original files remain unchanged.
+
+Older WebGL Screen destination factors are adapted to `ONE_MINUS_SRC_COLOR`, matching the newer official runtime. With PMA inputs the RGB factors are Normal `(ONE, ONE_MINUS_SRC_ALPHA)`, Additive `(ONE, ONE)`, Multiply `(DST_COLOR, ONE_MINUS_SRC_ALPHA)`, and Screen `(ONE, ONE_MINUS_SRC_COLOR)`. `tests/blend-pixels.cjs` compares real composited GPU pixels against these equations with semi-transparent slot tint and transparent texture RGB bleed, for both source alpha formats across the distinct 3.x and 4.x renderer families. Spine 2.x exports support their original normal/additive slot modes.
+
 ## Spine 2.x
 
 `spine-core-2.1.js` is the official `spine-js/spine.js` at tag [2.1.25](https://github.com/EsotericSoftware/spine-runtimes/tree/142e770e5b4b42395a3a0a68ff3c8a21ba2774eb), wrapped as `window.spine21`. The core preserves native 2.x bone inheritance, flips, IK, mesh weighting, and FFD. The 2.0 compatibility path uses the same core after decoding its distinct binary layout. `spine-2x-bridge.js` supplies WebGL rendering through the existing 3.4 batcher/atlas, bounds calculation, and an animation-name API adapter. It does not convert 2.x bone transforms to 3.x transforms.

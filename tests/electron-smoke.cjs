@@ -138,6 +138,8 @@ async function run() {
       }
     }
   }
+  await require('./navigation-smoke.cjs')({evaluate,until,check,wait,win});
+  await require('./blend-pixels.cjs')({fixtures,evaluate,until,win,checks,wait});
   for(const extension of ['json','skel']) {
     await evaluate(`selectProject(${project(path.join(root,'tests/fixtures/2.1/raptor',`spineboy-pro.${extension}`))})`);
     await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
@@ -187,6 +189,7 @@ async function run() {
     await check('user asset plays through normal folder selection', `({file:selectedProject.fullPath,project:selectedProject.isDirectSpineFile,version:activePlayer.skeleton.data.version,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY)),animation:(activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.name,paused:activePlayer.paused,status:previewText.textContent})`, r=>{assert.ok(r.project);assert.ok(r.version);assert.ok(r.animation);assert.equal(r.paused,false);assert.equal(r.finite,true);});
     await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true');await wait(100);
     fs.writeFileSync(path.join(root, '.temp/user-asset-verification.png'), (await win.webContents.capturePage()).toPNG());
+    if(process.env.SPINE_TEST_ANIMATION){await evaluate(`playbackControls.choose(${JSON.stringify(process.env.SPINE_TEST_ANIMATION)});playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true`);await wait(100);fs.writeFileSync(path.join(root,'.temp/user-animation-verification.png'),(await win.webContents.capturePage()).toPNG());}
   }
   win.hide();
   await evaluate(`selectProject(${project(modernFile)})`);

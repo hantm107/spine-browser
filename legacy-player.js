@@ -36,7 +36,10 @@ class LegacySpinePlayer {
       : new s.webgl.ManagedWebGLRenderingContext(this.canvas, { alpha: false });
     if (!this.context.gl) throw new Error('WebGL is unavailable. Enable hardware acceleration to preview this file.');
     this.sceneRenderer = new s.webgl.SceneRenderer(this.canvas, older ? this.context.gl : this.context, true);
-    this.atlas = new s.TextureAtlas(this.options.atlasText, name => {
+    // Older atlas parsers predate this page property. Source PMA is already
+    // recorded by the modern metadata parser and used during GPU upload.
+    const legacyAtlasText = this.options.atlasText.replace(/^[\t ]*pma:[^\r\n]*(?:\r?\n|$)/gm, '');
+    this.atlas = new s.TextureAtlas(legacyAtlasText, name => {
       const image = images.get(name);
       if (!image) throw new Error(`Missing atlas image: ${name}`);
       const texture = new s.webgl.GLTexture(older ? this.context.gl : this.context, image);

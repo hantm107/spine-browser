@@ -58,6 +58,11 @@ function renderRecentFolders(){recentFolders.replaceChildren(new Option('Recent 
 renderRecentFolders();
 let allProjects = [];
 let selectedProject = null;
+let navigationTimer, navigationProject = null;
+function cancelNavigation() {
+  clearTimeout(navigationTimer);
+  navigationProject = null;
+}
 let activePlayer = null;
 let previewRequest = 0;
 let scanRequest = 0;
@@ -154,7 +159,9 @@ function renderProjectList(projects) {
   for (const project of projects) {
     const item = document.createElement('li');
     item.className = 'project-item';
-    item.classList.toggle('selected', selectedProject?.id === project.id);
+    const highlighted = (navigationProject || selectedProject)?.id === project.id;
+    item.classList.toggle('selected', highlighted);
+    if (highlighted) item.setAttribute('aria-current', 'true');
     item.dataset.id = project.id;
     const name = document.createElement('div'), folder = document.createElement('div');
     name.className = 'project-name'; folder.className = 'project-folder';
@@ -172,7 +179,7 @@ function renderProjectList(projects) {
     const actions=document.createElement('div');actions.className='asset-bookmark-actions';
     const tags=document.createElement('button');tags.className='edit-asset-tags';tags.textContent='Tags';tags.setAttribute('aria-label','Assign categories to '+project.name);tags.onclick=event=>{event.stopPropagation();editAssetCategories(project);};
     actions.append(favorite,tags);item.append(image,text,actions);
-    item.addEventListener('click', () => selectProject(project));
+    item.addEventListener('click', () => { selectProject(project); projectList.focus({preventScroll:true}); });
     fragment.append(item);
   }
   if (!projects.length) {
@@ -268,6 +275,7 @@ async function setupPreview(project) {
     }));
     if (!current()) return;
     let playerOptions;
+    window.SpineBlendCompatibility.configure(runtime, textures, atlas.pages);
     const success = (player, name) => {
       if (!current()) return;
       let animation = name || chooseAnimationName(player.skeleton.data.animations.map(a => a.name),player.skeleton.data.animations);
@@ -292,13 +300,13 @@ async function setupPreview(project) {
       const json = isJson ? JSON.parse(await window.spineApi.readTextFile(assets.skeletonPath)) : null;
       if (!current()) return;
       const player = new window.LegacySpinePlayer(playerHost, { runtime, series: version.series, atlasText, textures, skeletonDataURI, isJson, json,
-        premultipliedAlpha: atlas.pages.every(page => page.pma), chooseAnimation: chooseAnimationName, success, error });
+        premultipliedAlpha: true, chooseAnimation: chooseAnimationName, success, error });
       activePlayer = player;
       await player.ready;
     } else {
       playerOptions = { skeleton: skeletonKey, atlas: atlasUrl, atlasUrl, rawDataURIs,
         jsonUrl: isJson ? skeletonKey : undefined, skelUrl: isJson ? undefined : skeletonKey,
-        showControls: false, showLoading: true, backgroundColor: '#111827', alpha: false, defaultMix: 0.2,
+        showControls: false, showLoading: true, backgroundColor: '#111827', alpha: false, premultipliedAlpha: true, defaultMix: 0.2,
         success: player => success(player), error };
       activePlayer = new runtime.SpinePlayer(playerHost, playerOptions);
     }
@@ -308,6 +316,7 @@ async function setupPreview(project) {
 }
 
 async function selectProject(project) {
+  cancelNavigation();
   selectedProject = project;
   saveWorkspace();
   updateDetailPanel(project);
@@ -351,6 +360,7 @@ async function chooseFolder(folderOverride) {
 }
 
 function refreshProjectList() {
+  cancelNavigation();
   updateSummary();
   const projects = filteredProjects();
   if (!projects.some(p => p.id === selectedProject?.id)) selectProject(projects[0] || null);
@@ -365,10 +375,53 @@ hideSkelCheckbox.addEventListener('change', () => {
 });
 chooseFolderBtn.addEventListener('click',()=>chooseFolder());
 favoritesOnly.onchange=()=>selectCategory(favoritesOnly.checked?'favorites':'all');
-libraryView.onchange=()=>{renderProjectList(filteredProjects());saveWorkspace();};
+libraryView.onchange=()=>{cancelNavigation();renderProjectList(filteredProjects());saveWorkspace();};
 recentFolders.onchange=()=>{if(recentFolders.value)chooseFolder(recentFolders.value);};
 document.getElementById('rescanBtn').onclick=()=>{if(currentFolder)chooseFolder(currentFolder);};
 window.addEventListener('beforeunload',saveWorkspace);
+projectList.tabIndex = 0;
+projectList.setAttribute('aria-label', 'Files. Use arrow keys to browse.');
+document.addEventListener('keydown', event => {
+  if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const target = event.target;
+  if (document.querySelector('dialog[open]') || target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return;
+  if (target.closest('button,a,[role="slider"]') && !projectList.contains(target)) return;
+  const projects = filteredProjects(), cards = [...projectList.querySelectorAll('[data-id]')];
+  if (!projects.length || cards.length !== projects.length) return;
+  event.preventDefault();
+  let index = projects.findIndex(p => p.id === (navigationProject || selectedProject)?.id);
+  if (index < 0) index = 0;
+  else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') index = Math.max(0,Math.min(projects.length-1,index+(event.key==='ArrowLeft'?-1:1)));
+  else {
+    const rows = [];
+    cards.forEach((card,i) => {
+      const rect = card.getBoundingClientRect();
+      let row = rows.at(-1);
+      if (!row || Math.abs(row.top-rect.top)>2) { row={top:rect.top,items:[]}; rows.push(row); }
+      row.items.push({index:i,x:rect.left+rect.width/2});
+    });
+    const rowIndex = rows.findIndex(row=>row.items.some(item=>item.index===index));
+    const nextRow = rows[rowIndex+(event.key==='ArrowUp'?-1:1)];
+    if (nextRow) {
+      const x = rows[rowIndex].items.find(item=>item.index===index).x;
+      index = nextRow.items.reduce((best,item)=>Math.abs(item.x-x)<Math.abs(best.x-x)?item:best).index;
+    }
+  }
+  clearTimeout(navigationTimer);
+  navigationProject = projects[index];
+  cards.forEach((card,i)=>{card.classList.toggle('selected',i===index);if(i===index)card.setAttribute('aria-current','true');else card.removeAttribute('aria-current');});
+  cards[index].scrollIntoView({block:'nearest',inline:'nearest'});
+  projectList.focus({preventScroll:true});
+  const pending = navigationProject;
+  navigationTimer = setTimeout(()=>{
+    if (document.querySelector('dialog[open]') || pending.id===selectedProject?.id) { cancelNavigation();renderProjectList(filteredProjects());return; }
+    if (navigationProject===pending && filteredProjects().some(p=>p.id===pending.id)) selectProject(pending);
+  },200);
+});
+playerHost.addEventListener('click', event => {
+  if (event.target.closest('canvas') && activePlayer?.skeleton && !activePlayer.disposed) activePlayer.paused = !activePlayer.paused;
+});
+playerHost.title = 'Click the animation to pause or resume playback.';
 
 async function openSelected(method, title, message) {
   const project = selectedProject;
