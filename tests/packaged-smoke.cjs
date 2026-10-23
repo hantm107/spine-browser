@@ -28,8 +28,17 @@ async function run(){
   socket.onclose=()=>{for(const entry of pending.values())entry.reject(Error('Packaged app closed during verification'));pending.clear();};
   const send=(method,params={})=>new Promise((resolve,reject)=>{const key=++id;pending.set(key,{resolve,reject});socket.send(JSON.stringify({id:key,method,params}));});
   const evaluate=async expression=>{const result=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));return result.result.value;};
+  // Windows may launch the portable app occluded behind the terminal, which
+  // suspends animation frames. Expose our isolated test window for playback QA.
+  await send('Page.bringToFront');
+  await send('Emulation.setFocusEmulationEnabled',{enabled:true});
   for(let i=0;i<100;i++){if(await evaluate('typeof selectProject === "function"'))break;await wait(100);}
   assert.equal(await evaluate('typeof selectProject'),'function');checks.push('Packaged UI and preload load');
+  const categoryState=await evaluate(`(()=>{for(let i=0;i<12;i++)createCategory('Release check '+i);return {count:workspace.categories.length,colors:new Set(workspace.categories.map(c=>c.color)).size};})()`);
+  assert.equal(categoryState.count,12);assert.equal(categoryState.colors,12);
+  checks.push('Packaged category modules create more than eight uniquely colored categories');
+  const ratio=await evaluate(`(()=>{const r=document.getElementById('previewBox').getBoundingClientRect();return r.width/r.height;})()`);
+  assert.ok(Math.abs(ratio-1.6)<0.01);checks.push('Packaged preview uses 16:10 proportions');
   const seriesToTest=process.env.PACKAGED_TEST_SERIES?.split(',') || ['3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2'];
   for(const series of seriesToTest)for(const ext of ['json','skel']){
     const file=path.join(root,'tests/fixtures',series,`spineboy-pro.${ext}`);

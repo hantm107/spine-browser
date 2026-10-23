@@ -5,6 +5,26 @@ const path = require('node:path');
 const os = require('node:os');
 const assets = require('../project-assets');
 const {groupAssets}=require('../asset-groups');
+const categories=require('../category-store');
+test('categories support hundreds of distinct RGB colors and validate names',()=>{
+  const list=[];
+  assert.throws(()=>categories.create(list,'','empty'),/name/);
+  categories.create(list,'Fire','0');assert.throws(()=>categories.create(list,' fire ','duplicate'),/unique/);
+  for(let i=1;i<8;i++)categories.create(list,'Category '+i,String(i));
+  assert.equal(new Set(list.map(c=>c.color)).size,8);
+  for(let i=8;i<500;i++)categories.create(list,'Category '+i,String(i));
+  assert.equal(list.length,500);assert.equal(new Set(list.map(c=>c.color)).size,500);
+  assert.ok(list.every(c=>/^#[0-9a-f]{6}$/.test(c.color)));
+  const remaining=categories.remove(list,'0');const added=categories.create(remaining,'Replacement','new');assert.equal(added.color,categories.COLORS[0]);
+});
+test('category membership is independent and rename preserves tags',()=>{
+  const list=[];categories.create(list,'Fire','fire');categories.create(list,'Explosion','explosion');
+  const project={id:'D:/effects/a.spine',fullPath:'D:/effects/a.spine'};
+  categories.assign(list,'fire',project,true);categories.assign(list,'explosion',project,true);
+  categories.rename(list,'fire','Flames');assert.ok(list[0].assets[project.id]);
+  categories.assign(list,'fire',project,false);assert.ok(list[1].assets[project.id]);assert.equal(list[0].assets[project.id],undefined);
+  assert.equal(categories.remove(list,'fire')[0].assets[project.id].fullPath,project.fullPath);
+});
 
 test('grouping merges alternate formats and numbered projects without merging ambiguous siblings',()=>{
   const file=(name,dir='root')=>({fullPath:`C:/${dir}/${name}`,id:`C:/${dir}/${name}`,fileName:name,name:name.replace(/\.[^.]+$/,''),folder:dir,isDirectSpineFile:name.endsWith('.spine'),size:1});

@@ -8,6 +8,8 @@ files:
   - preload.js
   - project-assets.js
   - asset-groups.js
+  - category-store.js
+  - category-ui.js
   - runtime-catalog.js
   - runtime-loader.js
   - legacy-player.js

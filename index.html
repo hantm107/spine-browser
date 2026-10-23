@@ -9,30 +9,28 @@
   </head>
   <body>
     <div class="app">
-      <aside class="sidebar">
-        <div class="toolbar">
+      <aside class="sidebar" aria-label="Asset library">
+        <div class="library-header">
           <button id="chooseFolderBtn">Choose folder</button>
+          <select id="recentFolders" aria-label="Recent folders"><option value="">Recent folders</option></select>
+          <button id="rescanBtn" class="quiet">Rescan</button>
         </div>
-
-        <select id="recentFolders" aria-label="Recent folders"><option value="">Recent folders</option></select>
-        <button id="rescanBtn" class="quiet">Rescan folder</button>
-        <div class="library-options"><label><input id="favoritesOnly" type="checkbox"> Favorites only</label><label>View <select id="libraryView"><option value="list">List</option><option value="grid">Grid</option></select></label></div>
-        <label class="search-label" for="searchInput">Search</label>
-        <input
-          id="searchInput"
-          type="text"
-          placeholder="Find a Spine project..."
-          autocomplete="off"
-        />
-
-        <label class="file-filter">
-          <input id="hideSkelCheckbox" type="checkbox" />
-          Hide .skel files
-        </label>
-
-        <div id="summary" class="summary">No folder selected</div>
-
-        <ul id="projectList" class="project-list"></ul>
+        <section class="categories-section" aria-label="Categories">
+          <h2>Categories <span id="categoryCount">0</span></h2>
+          <div id="categoryList"></div>
+          <form id="newCategoryForm"><input id="newCategoryName" maxlength="40" placeholder="New category" aria-label="New category name"><button id="addCategoryBtn" type="submit" aria-label="Create category">+</button></form>
+          <p id="categoryMessage" role="status"></p>
+        </section>
+        <section class="file-browser" aria-label="Files">
+          <div class="browser-controls">
+            <div class="browser-search"><label class="search-label" for="searchInput">Search</label><input id="searchInput" type="text" placeholder="Find a Spine project..." autocomplete="off"></div>
+            <label class="browser-view">View <select id="libraryView"><option value="list">List</option><option value="grid">Grid</option></select></label>
+            <label hidden><input id="favoritesOnly" type="checkbox"> Favorites only</label>
+            <label class="file-filter"><input id="hideSkelCheckbox" type="checkbox"> Hide .skel files</label>
+            <div id="summary" class="summary">No folder selected</div>
+          </div>
+          <ul id="projectList" class="project-list"></ul>
+        </section>
       </aside>
 
       <main class="detail-panel">
@@ -89,6 +87,8 @@
     <script src="runtime-loader.js"></script>
     <script src="legacy-player.js"></script>
     <script src="playback-controls.js"></script>
+    <script src="category-store.js"></script>
+    <script src="category-ui.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

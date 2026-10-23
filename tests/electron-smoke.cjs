@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const fixtures = process.env.SPINE_TEST_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spine-electron-test-'));
 const appRequire = createRequire(path.join(root, 'main.js'));
 electron.app.setPath('userData', path.join(fixtures, 'profile'));
-let win, completed = false;
+let win, completed = false, aboutMessage;
 const failures = [], checks = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const evaluate = code => win.webContents.executeJavaScript(code);
@@ -59,7 +59,9 @@ const sample = path.join(fixtures,'sample','001.spine');
 fs.cpSync(path.join(root,'tests/fixtures/3.6'),path.dirname(sample),{recursive:true});
 fs.writeFileSync(sample,'reference project');
 function project(file, name = path.basename(file)) { return JSON.stringify({ id: file, fullPath: file, name, fileName: path.basename(file), relativePath: file, folder: '(root)', isDirectSpineFile: file.endsWith('.spine') }); }
-const actualElectron = { ...electron, BrowserWindow: class {
+const actualElectron = { ...electron, dialog: { ...electron.dialog,
+  showMessageBox: async (parent, options) => { aboutMessage = { parent, options }; return { response: 0 }; },
+}, BrowserWindow: class {
   constructor(options) {
     win = new electron.BrowserWindow({ ...options, show: false, webPreferences: { ...options.webPreferences, backgroundThrottling: false } });
     win.webContents.on('console-message', (_, level, message) => { if (level >= 3) console.error('Renderer:', message); });
@@ -75,6 +77,16 @@ vm.runInNewContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), {
 }, { filename: path.join(root, 'main.js') });
 
 async function run() {
+  const help = electron.Menu.getApplicationMenu().items.find(item => item.role === 'help');
+  const about = help?.submenu.items.find(item => item.label === 'About Spine Browser');
+  assert.ok(about, 'Help menu contains About Spine Browser');
+  await about.click(about, win);
+  assert.equal(aboutMessage.parent, win);
+  assert.equal(aboutMessage.options.title, 'About Spine Browser');
+  assert.ok(aboutMessage.options.detail.includes(`Version ${require('../package.json').version}`));
+  assert.ok(aboutMessage.options.detail.includes('Author: Han Tuan'));
+  assert.match(aboutMessage.options.detail, /Browse and preview Spine animations/);
+  checks.push({ name: 'Help About describes the app with its current version and author' });
   await check('default animation skips empty run placeholders when animated clips exist', "chooseAnimationName(['run','action1'],[{name:'run',duration:0},{name:'action1',duration:1}])",r=>assert.equal(r,'action1'));
   await check('runtime catalog and modern player loaded', `({modern:!!window.spine?.SpinePlayer,series:Object.keys(window.spineRuntimeCatalog),css:[...document.styleSheets].map(s=>s.href)})`, r => { assert.ok(r.modern); assert.equal(r.series.length, 13); assert.ok(r.css.some(s => s.endsWith('spine-player.css'))); });
   electron.ipcMain.removeHandler('select-folder');
@@ -83,7 +95,12 @@ async function run() {
   win.showInactive();
   await evaluate('chooseFolder()');
   await until('activePlayer?.animationState?.getCurrent(0)?.trackTime > 0.25');
-  await check('real 3.6 sample plays', `({title:previewTitle.textContent,message:previewText.textContent,version:activePlayer?.skeleton?.data.version,animation:activePlayer?.animationState?.getCurrent(0)?.animation.name,time:activePlayer?.animationState?.getCurrent(0)?.trackTime,paused:activePlayer?.paused,bounds:activePlayer?.bounds,canvas:activePlayer?.canvas&&{width:activePlayer.canvas.clientWidth,height:activePlayer.canvas.clientHeight}})`, r => { assert.equal(r.version, '3.6.32'); assert.equal(r.animation, 'idle'); assert.ok(r.time > 0); assert.equal(r.paused, false); assert.ok(r.canvas.width > 500); assert.ok(r.bounds.width > 10); });
+  await check('real 3.6 sample plays', `({title:previewTitle.textContent,message:previewText.textContent,version:activePlayer?.skeleton?.data.version,animation:activePlayer?.animationState?.getCurrent(0)?.animation.name,time:activePlayer?.animationState?.getCurrent(0)?.trackTime,paused:activePlayer?.paused,bounds:activePlayer?.bounds,canvas:activePlayer?.canvas&&{width:activePlayer.canvas.clientWidth,height:activePlayer.canvas.clientHeight}})`, r => { assert.equal(r.version, '3.6.32'); assert.equal(r.animation, 'idle'); assert.ok(r.time > 0); assert.equal(r.paused, false); assert.ok(r.canvas.width > 300); assert.ok(r.bounds.width > 10); });
+  for (const width of [980, 1600, 1200]) {
+    win.setSize(width, 850);
+    await wait(100);
+    await check(`preview keeps 16:10 proportions at window width ${width}`, `(()=>{const box=document.getElementById('previewBox').getBoundingClientRect();return {width:box.width,height:box.height};})()`, r => assert.ok(Math.abs(r.width / r.height - 1.6) < 0.01));
+  }
   const shot = await win.webContents.capturePage();
   fs.mkdirSync(path.join(root, '.temp'), { recursive: true });
   fs.writeFileSync(path.join(root, '.temp/preview-verification.png'), shot.toPNG());
@@ -158,7 +175,7 @@ async function run() {
   win.hide();
   await evaluate(`selectProject(${project(modernFile)})`);
   await until('!!activePlayer?.skeleton');
-  await check('modern export preserves case and autoplays', `({loaded:!!activePlayer?.skeleton,track:activePlayer?.animationState?.getTrack(0)?.animation.name,paused:activePlayer?.paused,width:activePlayer?.canvas?.clientWidth,icon:document.querySelector('.animation-buttons button')?.textContent})`, r => { assert.ok(r.loaded); assert.equal(r.track, 'Idle'); assert.equal(r.paused, false); assert.ok(r.width > 500); assert.equal(r.icon, 'Idle'); });
+  await check('modern export preserves case and autoplays', `({loaded:!!activePlayer?.skeleton,track:activePlayer?.animationState?.getTrack(0)?.animation.name,paused:activePlayer?.paused,width:activePlayer?.canvas?.clientWidth,icon:document.querySelector('.animation-buttons button')?.textContent})`, r => { assert.ok(r.loaded); assert.equal(r.track, 'Idle'); assert.equal(r.paused, false); assert.ok(r.width > 300); assert.equal(r.icon, 'Idle'); });
   await evaluate(`selectProject(${project(spacedFile)})`);
   await until('!!activePlayer?.skeleton');
   await check('atlas pages allow spaces and uppercase extensions', `({loaded:!!activePlayer?.skeleton,error:activePlayer?.error})`, r => { assert.ok(r.loaded); assert.equal(r.error, false); });
@@ -228,6 +245,36 @@ async function run() {
   await evaluateAsync(`await selectProject(filteredProjects().find(p=>p.fullPath===${JSON.stringify(modernFile)}));document.querySelectorAll('.favorite-button')[1].click()`);
   await check('unbookmarking updates the global library', 'Object.keys(workspace.favorites).length',r=>assert.equal(r,1));
   electron.ipcMain.removeHandler('select-folder');
+  const categoryAsset=sample;
+  await evaluateAsync(`await selectCategory('all');searchInput.value='';await chooseFolder(${JSON.stringify(path.dirname(sample))});const fire=createCategory('Fire VFX');const blast=createCategory('Explosions');assignCategory(fire.id,selectedProject,true);assignCategory(blast.id,selectedProject,true);`);
+  await check('multiple colored category tags are integrated in an asset entry','({tags:[...document.querySelectorAll(".asset-category-tag")].map(b=>b.textContent),colors:workspace.categories.map(c=>c.color),favorite:!!workspace.favorites[selectedProject.id]})',r=>{assert.deepEqual(r.tags,['Fire VFX','Explosions']);assert.equal(new Set(r.colors).size,2);assert.equal(r.favorite,true);});
+  await evaluateAsync(`await chooseFolder(${JSON.stringify(path.dirname(modernFile))});await selectCategory(workspace.categories[0].id)`);
+  await until('!!activePlayer?.skeleton');
+  await check('custom category previews an asset outside the active folder','({folder:currentFolder,path:selectedProject.fullPath,count:filteredProjects().length})',r=>{assert.equal(r.folder,path.dirname(modernFile));assert.equal(r.path,categoryAsset);assert.equal(r.count,1);});
+  await evaluateAsync('editAssetCategories(selectedProject);document.querySelectorAll(".category-membership")[1].click();document.getElementById("categoryDialog").close();');
+  await check('membership dialog removes only its selected category','({first:Object.keys(workspace.categories[0].assets).length,second:Object.keys(workspace.categories[1].assets).length,favorites:Object.keys(workspace.favorites).length})',r=>{assert.equal(r.first,1);assert.equal(r.second,0);assert.equal(r.favorites,1);});
+  await evaluateAsync('editCategory(workspace.categories[0]);document.querySelector(".category-edit-form input").value="Flames";document.querySelector(".category-edit-form").requestSubmit();');
+  await check('rename updates the colored tag and retains membership','({name:document.querySelector(".asset-category-tag").textContent,count:filteredProjects().length})',r=>{assert.equal(r.name,'Flames');assert.equal(r.count,1);});
+  await evaluateAsync('for(let i=2;i<8;i++)createCategory("Category "+i);document.getElementById("newCategoryName").value="Ninth";document.getElementById("newCategoryForm").requestSubmit();');
+  await check('UI permits more than eight categories with distinct colors','({count:workspace.categories.length,colors:new Set(workspace.categories.map(c=>c.color)).size,disabled:document.getElementById("addCategoryBtn").disabled,message:document.getElementById("categoryMessage").textContent})',r=>{assert.equal(r.count,9);assert.equal(r.colors,9);assert.equal(r.disabled,false);assert.equal(r.message,'');});
+  await evaluateAsync('saveWorkspace()');
+  const categoryReload=new Promise(resolve=>win.webContents.once('did-finish-load',resolve));win.reload();await categoryReload;await until('!!activePlayer?.skeleton');
+  await check('category selection color and absolute bookmarks survive reload','({name:workspace.categories[0].name,active:activeCategory(),id:workspace.categories[0].id,colors:new Set(workspace.categories.map(c=>c.color)).size,path:selectedProject.fullPath})',r=>{assert.equal(r.name,'Flames');assert.equal(r.active,r.id);assert.equal(r.colors,9);assert.equal(r.path,categoryAsset);});
+  fs.writeFileSync(path.join(root,'.temp/categories-verification.png'),(await win.webContents.capturePage()).toPNG());
+  await evaluateAsync('editAssetCategories(selectedProject)');
+  await check('category popup uses large toggle buttons and a red bottom Close button', `(()=>{const dialog=document.getElementById('categoryDialog'),buttons=[...dialog.querySelectorAll('.category-membership')],close=dialog.querySelector('.dialog-close');return {count:buttons.length,selected:buttons[0].getAttribute('aria-pressed'),height:buttons[0].getBoundingClientRect().height,last:close===dialog.lastElementChild,background:getComputedStyle(close).backgroundColor,checkboxes:dialog.querySelectorAll('input[type=checkbox]').length};})()`,r=>{assert.equal(r.count,9);assert.equal(r.selected,'true');assert.ok(r.height>=52);assert.equal(r.last,true);assert.equal(r.background,'rgb(184, 59, 69)');assert.equal(r.checkboxes,0);});
+  await wait(150);
+  fs.writeFileSync(path.join(root,'.temp/category-popup-verification.png'),(await win.webContents.capturePage()).toPNG());
+  await evaluate('document.querySelector("#categoryDialog .dialog-close").click()');
+
+  await evaluateAsync('editCategory(workspace.categories[0]);document.querySelector(".delete-category").click();document.querySelector(".delete-category").click();');
+  await check('deleting a category keeps original files and Favorites','({count:workspace.categories.length,active:activeCategory(),favorites:Object.keys(workspace.favorites).length})',r=>{assert.equal(r.count,8);assert.equal(r.active,'all');assert.equal(r.favorites,1);assert.equal(fs.existsSync(categoryAsset),true);});
+  win.setSize(1920,1080);
+  await evaluateAsync(`searchInput.value='';await selectCategory('all');libraryView.value='list';await chooseFolder(${JSON.stringify(path.join(root,'tests/fixtures'))})`);
+  await wait(600);
+  fs.writeFileSync(path.join(root,'.temp/browser-layout-list.png'),(await win.webContents.capturePage()).toPNG());
+  await evaluate('libraryView.value="grid";libraryView.onchange()');await wait(100);
+  fs.writeFileSync(path.join(root,'.temp/browser-layout-grid.png'),(await win.webContents.capturePage()).toPNG());
   electron.ipcMain.handle('select-folder', () => path.join(fixtures, 'not-found'));
   await evaluate('chooseFolder()');
   await check('scan failure recovers controls and reports error', `({title:previewTitle.textContent,disabled:chooseFolderBtn.disabled,selected:selectedProject})`, r => { assert.equal(r.title, 'Folder scan failed'); assert.equal(r.disabled, false); assert.equal(r.selected, null); });

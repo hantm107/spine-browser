@@ -1,4 +1,5 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
+const { version } = require('./package.json');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -13,6 +14,25 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'index.html'));
+}
+
+function createMenu() {
+  const menu = Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    { role: 'help', submenu: [{
+      label: 'About Spine Browser',
+      click: (_item, window) => dialog.showMessageBox(window || BrowserWindow.getAllWindows()[0], {
+        type: 'info', title: 'About Spine Browser', message: 'Spine Browser',
+        detail: `Version ${version}\nAuthor: Han Tuan\n\nBrowse and preview Spine animations from local folders. Play animations across supported runtime versions, group related files, and organize assets with favorites and custom categories.`,
+        buttons: ['Close'], noLink: true,
+      }),
+    }] },
+  ]);
+  Menu.setApplicationMenu(menu);
 }
 
 async function openInSpine(filePath) {
@@ -82,6 +102,7 @@ app.whenReady().then(() => {
     catch (error) { console.error(error); return false; }
   });
   ipcMain.handle('open-file-in-spine', (_, filePath) => openInSpine(filePath));
+  createMenu();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

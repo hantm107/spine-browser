@@ -17,10 +17,12 @@ const playerHost = document.getElementById('playerHost');
 let workspace = {};
 try { workspace = JSON.parse(localStorage.getItem('workspaceV1') || '{}') || {}; } catch {}
 workspace.favorites ||= {}; workspace.recent ||= [];
+workspace.categories=Array.isArray(workspace.categories)?workspace.categories:[];
+for(const category of workspace.categories)category.assets ||= {};
 let favoriteRefresh = 0;
 function bookmark(project) { return {...project,id:project.id,fullPath:project.fullPath,unavailable:false}; }
-function favoriteProjects() {
-  return Object.entries(workspace.favorites).filter(([,value])=>value).map(([id,value])=>{
+function favoriteProjects(records = workspace.favorites) {
+  return Object.entries(records).filter(([,value])=>value).map(([id,value])=>{
     const fileName=id.split(/[\\/]/).pop();
     const saved=typeof value==='object'?value:{id,fullPath:id,fileName,name:fileName.replace(/\.[^.]+$/,''),folder:id.replace(/[\\/][^\\/]+$/,''),relativePath:id};
     return {...saved,id,folder:saved.fullPath.replace(/[\\/][^\\/]+$/,''),relativePath:saved.fullPath};
@@ -28,12 +30,14 @@ function favoriteProjects() {
 }
 async function refreshFavorites() {
   const request=++favoriteRefresh;
-  const records=await Promise.all(favoriteProjects().map(async project=>{
+  const collections=[workspace.favorites,...workspace.categories.map(c=>c.assets)];
+  const projects=[...new Map(collections.flatMap(collection=>favoriteProjects(collection)).map(p=>[p.id,p])).values()];
+  const records=await Promise.all(projects.map(async project=>{
     try { return {...project,...await window.spineApi.inspectFavorite(project.fullPath),id:project.id}; }
     catch(error) {return {...project,unavailable:true,unavailableReason:describeError(error)};}
   }));
   if(request!==favoriteRefresh)return;
-  for(const record of records)if(workspace.favorites[record.id])workspace.favorites[record.id]=record;
+  for(const collection of collections)for(const record of records)if(collection[record.id])collection[record.id]=record;
   saveWorkspace();
 }
 let currentFolder = '', playbackControls = null, thumbnailTimer = null;
@@ -101,8 +105,9 @@ function clearPreview() {
 
 function filteredProjects() {
   const value = searchInput.value.trim().toLowerCase();
-  const projects=favoritesOnly.checked?favoriteProjects():allProjects;
-  return projects.filter(p => (favoritesOnly.checked || includeFileType(p)) && (!value || (p.files || [p]).some(f => (f.fileName || f.name).toLowerCase().includes(value) || (favoritesOnly.checked?f.fullPath:f.folder).toLowerCase().includes(value))));
+  const collection=activeBookmarkMap();
+  const projects=collection?favoriteProjects(collection):allProjects;
+  return projects.filter(p => (!!collection || includeFileType(p)) && (!value || (p.files || [p]).some(f => (f.fileName || f.name).toLowerCase().includes(value) || (collection?f.fullPath:f.folder).toLowerCase().includes(value))));
 }
 
 function includeFileType(project) {
@@ -110,8 +115,11 @@ function includeFileType(project) {
 }
 
 function updateSummary() {
-  if (!hasScannedFolder && !favoritesOnly.checked) return;
+  renderCategories();
+  if (!hasScannedFolder && !activeBookmarkMap()) return;
   const count = filteredProjects().length;
+  const category=workspace.categories.find(c=>c.id===activeCategory());
+  if(category){summary.textContent=count+' of '+Object.keys(category.assets).length+' in '+category.name;return;}
   summary.textContent = favoritesOnly.checked ? `${count} of ${favoriteProjects().length} global favorites shown` : count + ' of ' + allProjects.length + ' assets shown' + (scanWarnings.length ? ' - ' + scanWarnings.length + ' paths skipped' : '');
 }
 
@@ -158,17 +166,19 @@ function renderProjectList(projects) {
     const key=project.thumbnailKey || project.id;
     if(thumbnailCache.has(key))image.src=thumbnailCache.get(key);else{image.dataset.thumbnailKey=key;thumbnailObserver?.observe(image);}
     const text=document.createElement('div');text.className='asset-text';text.append(name,folder);
-    const formats=document.createElement('small');formats.textContent=(project.files || [project]).map(f=>f.fileName?.split('.').pop()).filter(Boolean).join(' - ');text.append(formats);
+    const formats=document.createElement('small');formats.textContent=(project.files || [project]).map(f=>f.fileName?.split('.').pop()).filter(Boolean).join(' - ');text.append(formats,assetCategoryTags(project));
     const favorite=document.createElement('button');favorite.className='favorite-button';favorite.textContent=workspace.favorites[project.id]?'\u2605':'\u2606';favorite.title='Toggle favorite';favorite.setAttribute('aria-label','Favorite '+project.name);favorite.setAttribute('aria-pressed',String(!!workspace.favorites[project.id]));
     favorite.onclick=event=>{event.stopPropagation();if(workspace.favorites[project.id])delete workspace.favorites[project.id];else workspace.favorites[project.id]=bookmark(project);saveWorkspace();refreshProjectList();};
-    item.append(image,text,favorite);
+    const actions=document.createElement('div');actions.className='asset-bookmark-actions';
+    const tags=document.createElement('button');tags.className='edit-asset-tags';tags.textContent='Tags';tags.setAttribute('aria-label','Assign categories to '+project.name);tags.onclick=event=>{event.stopPropagation();editAssetCategories(project);};
+    actions.append(favorite,tags);item.append(image,text,actions);
     item.addEventListener('click', () => selectProject(project));
     fragment.append(item);
   }
   if (!projects.length) {
     const empty = document.createElement('li');
     empty.className = 'project-item';
-    empty.textContent = allProjects.length ? 'No matching files' : 'No Spine files found';
+    empty.textContent = activeBookmarkMap() ? (searchInput.value.trim()?'No matching bookmarks':'No bookmarked assets in this category') : allProjects.length ? 'No matching files' : 'No Spine files found';
     fragment.append(empty);
   }
   projectList.replaceChildren(fragment);
@@ -208,10 +218,11 @@ async function setupPreview(project) {
   const request = ++previewRequest;
   const current = () => request === previewRequest;
   disposePlayer();
-  if(favoritesOnly.checked && workspace.favorites[project.id]) {
+  const bookmarkCollection=activeBookmarkMap();
+  if(bookmarkCollection?.[project.id]) {
     const record=await window.spineApi.inspectFavorite(project.fullPath);
     if(!current())return;
-    if(record.unavailable){workspace.favorites[project.id]={...project,...record,id:project.id};saveWorkspace();renderProjectList(filteredProjects());assignPreviewText('Favorite unavailable',`${record.unavailableReason} ${project.fullPath}`);return;}
+    if(record.unavailable){bookmarkCollection[project.id]={...project,...record,id:project.id};saveWorkspace();renderProjectList(filteredProjects());assignPreviewText(favoritesOnly.checked?'Favorite unavailable':'Category asset unavailable',`${record.unavailableReason} ${project.fullPath}`);return;}
   }
   assignPreviewText(project.name, 'Loading animation…');
   const failed = message => {
@@ -320,7 +331,7 @@ async function chooseFolder(folderOverride) {
     currentFolder=folder;
     workspace.recent=[folder,...workspace.recent.filter(f=>f!==folder)].slice(0,10);renderRecentFolders();
     allProjects = projects;
-    for(const project of projects)if(workspace.favorites[project.id])workspace.favorites[project.id]=bookmark(project);
+    for(const collection of [workspace.favorites,...workspace.categories.map(c=>c.assets)])for(const project of projects)if(collection[project.id])collection[project.id]=bookmark(project);
     await refreshFavorites();
     if(request!==scanRequest)return;
     scanWarnings = warnings;
@@ -352,7 +363,7 @@ hideSkelCheckbox.addEventListener('change', () => {
   refreshProjectList();
 });
 chooseFolderBtn.addEventListener('click',()=>chooseFolder());
-favoritesOnly.onchange=async()=>{saveWorkspace();if(favoritesOnly.checked)await refreshFavorites();refreshProjectList();saveWorkspace();};
+favoritesOnly.onchange=()=>selectCategory(favoritesOnly.checked?'favorites':'all');
 libraryView.onchange=()=>{renderProjectList(filteredProjects());saveWorkspace();};
 recentFolders.onchange=()=>{if(recentFolders.value)chooseFolder(recentFolders.value);};
 document.getElementById('rescanBtn').onclick=()=>{if(currentFolder)chooseFolder(currentFolder);};
@@ -368,6 +379,7 @@ async function openSelected(method, title, message) {
 }
 openExplorerBtn.addEventListener('click', () => openSelected('openInExplorer', 'Explorer issue', 'The file could not be shown in Explorer.'));
 openSpineBtn.addEventListener('click', () => openSelected('openInSpine', 'Spine launch failed', 'The editor could not be launched. Check your Spine installation and file association.'));
+initializeCategories();
 updateDetailPanel(null);
 clearPreview();
 renderProjectList([]);
