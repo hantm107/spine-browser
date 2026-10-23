@@ -88,7 +88,7 @@ async function run() {
   assert.match(aboutMessage.options.detail, /Browse and preview Spine animations/);
   checks.push({ name: 'Help About describes the app with its current version and author' });
   await check('default animation skips empty run placeholders when animated clips exist', "chooseAnimationName(['run','action1'],[{name:'run',duration:0},{name:'action1',duration:1}])",r=>assert.equal(r,'action1'));
-  await check('runtime catalog and modern player loaded', `({modern:!!window.spine?.SpinePlayer,series:Object.keys(window.spineRuntimeCatalog),css:[...document.styleSheets].map(s=>s.href)})`, r => { assert.ok(r.modern); assert.equal(r.series.length, 13); assert.ok(r.css.some(s => s.endsWith('spine-player.css'))); });
+  await check('runtime catalog and modern player loaded', `({modern:!!window.spine?.SpinePlayer,series:Object.keys(window.spineRuntimeCatalog),css:[...document.styleSheets].map(s=>s.href)})`, r => { assert.ok(r.modern); assert.equal(r.series.length, 15); assert.ok(r.css.some(s => s.endsWith('spine-player.css'))); });
   electron.ipcMain.removeHandler('select-folder');
   electron.ipcMain.handle('select-folder', () => path.dirname(sample));
   // Expose the test window briefly so Chromium advances real visible animation frames.
@@ -108,7 +108,7 @@ async function run() {
   await check('legacy pause control', `document.getElementById('playPauseBtn').click(); activePlayer.paused`, r => assert.equal(r, true));
   win.showInactive();
   await evaluate('if (!hideSkelCheckbox.checked) hideSkelCheckbox.click()');
-  for (const series of ['3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2']) {
+  for (const series of ['2.0','2.1','3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2']) {
     for (const extension of ['skel','json']) {
       const source = path.join(root, 'tests/fixtures', series);
       if (extension === 'json') {
@@ -138,6 +138,22 @@ async function run() {
       }
     }
   }
+  for(const extension of ['json','skel']) {
+    await evaluate(`selectProject(${project(path.join(root,'tests/fixtures/2.1/raptor',`spineboy-pro.${extension}`))})`);
+    await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
+    await check('2.1 archived raptor '+extension+' meshes render with finite bounds', '({version:activePlayer.skeleton.data.version,bones:activePlayer.skeleton.bones.length,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY)),slots:activePlayer.skeleton.drawOrder.slice(0,3).map(s=>({attachment:s.attachment?.name,object:!!s.attachment?.rendererObject,type:s.attachment?.type,uv:s.attachment?.uvs?.length})),matrices:activePlayer.skeleton.bones.filter(b=>!Number.isFinite(b.m00)).map(b=>({name:b.data.name,rotation:b.rotation,scale:b.scaleX})),draws:activePlayer.sceneRenderer.batcher.drawCalls,bounds:activePlayer.bounds,animated:activePlayer.animationState.getCurrent(0).animation.name})',r=>{assert.equal(r.version,'2.1.25');assert.equal(r.bones,66);assert.equal(r.finite,true);assert.equal(r.matrices.length,0,JSON.stringify(r));assert.ok(r.draws>0,JSON.stringify(r));assert.ok(r.bounds.width>500);assert.notEqual(r.animated,'empty');});
+  }
+  await wait(150);
+  fs.writeFileSync(path.join(root,'.temp/legacy-2x-preview.png'),(await win.webContents.capturePage()).toPNG());
+  await evaluate(`selectProject(${project(path.join(root,'tests/fixtures/2.1/spineboy-pro.json'))})`);
+  await until('!!activePlayer?.skeleton');
+  await check('2.1 native flip timeline mirrors bones when seeking', `(()=>{playbackControls.seek(0.6);const flipped=activePlayer.skeleton.bones[0].flipX;playbackControls.seek(0.1);return {flipped,reset:activePlayer.skeleton.bones[0].flipX,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))};})()`,r=>{assert.equal(r.flipped,true);assert.equal(r.reset,false);assert.equal(r.finite,true);});
+  const unversioned=JSON.parse(fs.readFileSync(path.join(root,'tests/fixtures/2.1/spineboy-pro.json'),'utf8'));delete unversioned.skeleton;
+  const unversionedFile=make('unversioned',unversioned,fs.readFileSync(path.join(root,'tests/fixtures/2.1/spineboy-pro.atlas'),'utf8'));
+  fs.copyFileSync(path.join(root,'tests/fixtures/2.1/square.png'),path.join(path.dirname(unversionedFile),'square.png'));
+  await evaluate(`chooseFolder(${JSON.stringify(path.dirname(unversionedFile))})`);
+  await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
+  await check('unversioned legacy JSON is discovered and clearly labeled', '({count:allProjects.length,note:previewText.textContent})',r=>{assert.equal(r.count,1);assert.match(r.note,/unversioned JSON/);});
   // Let the player's loading overlay finish fading before recording the rendered preview.
   await wait(800);
   fs.writeFileSync(path.join(root, '.temp/multi-version-verification.png'), (await win.webContents.capturePage()).toPNG());

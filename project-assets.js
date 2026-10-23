@@ -14,7 +14,7 @@ async function readSkeletonJson(filePath) {
 async function isSkeletonJson(filePath) {
   try {
     const data = await readSkeletonJson(filePath);
-    return Array.isArray(data?.bones) && typeof data?.skeleton?.spine === 'string';
+    return Array.isArray(data?.bones) && (typeof data?.skeleton?.spine === 'string' || isUnversionedLegacyJson(data));
   } catch (error) {
     if (error instanceof SyntaxError) return false;
     throw error;
@@ -35,13 +35,21 @@ async function readSpineVersionFromFile(filePath) {
   } finally { await handle.close(); }
 }
 
+function isUnversionedLegacyJson(data) {
+  return !data?.skeleton?.spine && Array.isArray(data?.bones) && data.bones.length > 0
+    && data.bones.every(b => typeof b.name === 'string') && Array.isArray(data.slots)
+    && data.skins && !Array.isArray(data.skins) && typeof data.skins === 'object'
+    && data.animations && typeof data.animations === 'object';
+}
+
 async function detectSpineFileCompatibility(filePath) {
   const fileVersion = filePath ? await readSpineVersionFromFile(filePath) : null;
-  const series = versionSeries(fileVersion);
+  const inferredLegacy = !fileVersion && /\.json$/i.test(filePath || '') && isUnversionedLegacyJson(await readSkeletonJson(filePath));
+  const series = inferredLegacy ? '2.1' : versionSeries(fileVersion);
   const descriptor = runtimeCatalog[series];
   return { fileVersion, series, runtimeVersion: descriptor?.runtime === 'modern' ? runtimeVersion : descriptor?.version || null,
     runtime: descriptor?.runtime || null, kind: descriptor?.kind || null,
-    mismatch: !descriptor, supportedVersions: Object.keys(runtimeCatalog) };
+    inferredLegacy: !!inferredLegacy, mismatch: !descriptor, supportedVersions: Object.keys(runtimeCatalog) };
 }
 
 async function scanDirectory(folderPath) {

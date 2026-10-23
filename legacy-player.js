@@ -18,7 +18,8 @@ class LegacySpinePlayer {
 
   async load() {
     const s = this.options.runtime;
-    const older = ['3.0', '3.1', '3.2', '3.3', '3.4'].includes(this.options.series);
+    const v2 = this.options.series.startsWith('2.');
+    const older = v2 || ['3.0', '3.1', '3.2', '3.3', '3.4'].includes(this.options.series);
     if (!s?.SkeletonJson || (!s?.SkeletonBinary && !older)) throw new Error(`The Spine ${this.options.series} runtime could not be loaded.`);
     const images = new Map();
     await Promise.all(Object.entries(this.options.textures).map(async ([name, uri]) => {
@@ -47,7 +48,7 @@ class LegacySpinePlayer {
     if (older) {
       const json = this.options.isJson ? this.options.json : window.OldSpineDecoder.decode(
         Uint8Array.from(atob(this.options.skeletonDataURI.split(',')[1]), c => c.charCodeAt(0)), this.options.series);
-      data = new s.SkeletonJson(loader).readSkeletonData(Number(this.options.series) <= 3.2 ? window.OldSpineDecoder.normalize32(json) : json);
+      data = new s.SkeletonJson(loader).readSkeletonData(!v2 && Number(this.options.series) <= 3.2 ? window.OldSpineDecoder.normalize32(json) : json);
     } else if (this.options.series === '3.5' && !this.options.isJson) {
       data = new s.SkeletonJson(loader).readSkeletonData(window.OldSpineDecoder.decode(Uint8Array.from(atob(this.options.skeletonDataURI.split(',')[1]), c=>c.charCodeAt(0)), '3.5'));
     } else if (this.options.isJson) {
@@ -112,7 +113,7 @@ class LegacySpinePlayer {
     this.skeleton.setToSetupPose();
     for (let i = 0; i < samples; i++) {
       if (animation) {
-        if (['3.0', '3.1', '3.2', '3.3', '3.4'].includes(this.options.series)) animation.apply(this.skeleton, 0, animation.duration * i / samples, false, []);
+        if (Number(this.options.series) <= 3.4) animation.apply(this.skeleton, 0, animation.duration * i / samples, false, []);
         else animation.apply(this.skeleton, 0, animation.duration * i / samples, false, [], 1,
           s.MixPose?.setup ?? s.MixBlend.setup, s.MixDirection.mixIn ?? s.MixDirection.in);
       }

@@ -1,4 +1,4 @@
-/* Spine 3.0-3.5 binary layouts, based on the archived official Java and C#
+/* Spine 2.0-3.5 binary layouts, based on the archived official Java and C#
  * readers listed in vendor/README.md. Decodes to an in-memory JSON skeleton;
  * source files are never changed. See vendor/LICENSE.spine-* for source licenses. */
 (function (root, factory) {
@@ -63,15 +63,16 @@
   }
 
   function decode(bytes, series) {
-    if (!['3.0', '3.1', '3.2', '3.3', '3.4', '3.5'].includes(series)) throw new Error(`No older binary decoder for ${series}.`);
+    if (!['2.0', '2.1', '3.0', '3.1', '3.2', '3.3', '3.4', '3.5'].includes(series)) throw new Error(`No older binary decoder for ${series}.`);
+    const v2 = series.startsWith('2.');
     const r = new Reader(bytes), old = Number(series) <= 3.2, pre32 = Number(series) < 3.2;
     const json = { skeleton: { hash: r.string(), spine: r.string(), width: r.float(), height: r.float() }, bones: [], slots: [], ik: [], transform: [], path: [], skins: {}, events: {}, animations: {} };
     if (!json.skeleton.spine?.startsWith(series + '.')) throw new Error('The binary header does not match the selected Spine version.');
-    const early = series === '3.0' || (series === '3.1' && parseInt(json.skeleton.spine.split('.')[2]) < 5);
+    const early = v2 || series === '3.0' || (series === '3.1' && parseInt(json.skeleton.spine.split('.')[2]) < 5);
     const v35 = series === '3.5';
     const nonessential = r.bool();
     if (nonessential && v35) json.skeleton.fps = r.float();
-    if (nonessential) json.skeleton.images = r.string();
+    if (nonessential && series !== '2.0') json.skeleton.images = r.string();
     const bone = index => { const name = json.bones[index]?.name; if (!name) throw new Error(`Invalid bone index: ${index}`); return name; };
     const slot = index => { const name = json.slots[index]?.name; if (!name) throw new Error(`Invalid slot index: ${index}`); return name; };
     const values = (target, fields) => { for (const field of fields) target[field] = r.float(); };
@@ -80,6 +81,7 @@
       if (early) { const parent = r.int() - 1; if (parent >= 0) data.parent = bone(parent); }
       else if (i) data.parent = bone(r.int());
       values(data, pre32 ? ['x', 'y', 'scaleX', 'scaleY', 'rotation', 'length'] : ['rotation', 'x', 'y', 'scaleX', 'scaleY', 'shearX', 'shearY', 'length']);
+      if (series === '2.1') { data.flipX = r.bool(); data.flipY = r.bool(); }
       if (v35) data.transform = ['normal','onlyTranslation','noRotationOrReflection','noScale','noScaleOrReflection'][r.int()];
       else if (pre32) { data.inheritScale = r.bool(); data.inheritRotation = r.bool(); }
       else { data.inheritRotation = r.bool(); data.inheritScale = r.bool(); }
@@ -89,7 +91,8 @@
     function readSlots() {
       for (let i = 0, count = r.count(); i < count; i++) {
         const data = { name: r.string(), bone: bone(r.int()), color: r.color(), attachment: r.string() };
-        data.blend = ['normal', 'additive', 'multiply', 'screen'][r.int()];
+        data.blend = ['normal', 'additive', 'multiply', 'screen'][v2 ? Number(r.bool()) : r.int()];
+        if (v2) data.additive = data.blend === 'additive';
         if (!data.blend) throw new Error('Invalid slot blend mode.');
         json.slots.push(data);
       }
@@ -103,7 +106,7 @@
       }
     }
     function readTransforms() {
-      if (series === '3.0') return;
+      if (v2 || series === '3.0') return;
       for (let i = 0, count = r.count(); i < count; i++) {
         const data = { name: r.string() };
         if(v35)data.order=r.int();
@@ -141,7 +144,7 @@
     function attachment() {
       const data = {}, name = r.string(), type = r.byte();
       if (name != null) data.name = name;
-      const kind = (old ? ['region', 'boundingbox', 'mesh', 'weightedmesh', 'linkedmesh', 'weightedlinkedmesh'] : ['region', 'boundingbox', 'mesh', 'linkedmesh', 'path'])[type];
+      const kind = (v2 ? ['region', 'boundingbox', 'mesh', 'skinnedmesh'] : old ? ['region', 'boundingbox', 'mesh', 'weightedmesh', 'linkedmesh', 'weightedlinkedmesh'] : ['region', 'boundingbox', 'mesh', 'linkedmesh', 'path'])[type];
       if (!kind) throw new Error(`Unsupported Spine ${series} attachment type ${type}.`);
       data.type = kind;
       if (kind === 'region') {
@@ -152,12 +155,12 @@
         data.vertexCount = r.count() / (early ? 2 : 1);
         data.vertices = old ? vertices(data.vertexCount, false) : vertices(data.vertexCount);
         if (!old && nonessential) data.color = r.color();
-      } else if (kind === 'mesh' || kind === 'weightedmesh') {
+      } else if (kind === 'mesh' || kind === 'weightedmesh' || kind === 'skinnedmesh') {
         data.path = r.string(); if (!early) data.color = r.color();
         const count = r.count() / (early ? 2 : 1);
         data.uvs = r.floats(count * 2); data.triangles = r.shorts();
         if (early) r.count(); // Encoded vertex-array length (weighted arrays include bone indices).
-        data.vertices = old ? vertices(count, kind === 'weightedmesh', true) : vertices(count);
+        data.vertices = old ? vertices(count, kind !== 'mesh', true) : vertices(count);
         if (early) data.color = r.color();
         data.hull = r.int();
         if (nonessential) { data.edges = early ? Array.from({length:r.count()}, () => r.int()) : r.shorts(); values(data, ['width', 'height']); }
@@ -217,7 +220,11 @@
       for (let j = 0, total = r.count(); j < total; j++) {
         const boneName = bone(r.int()), timelines = animation.bones[boneName] = {};
         for (let k = 0, n = r.count(); k < n; k++) {
-          const type = r.byte(), kind = (pre32 ? ['scale', 'rotate', 'translate'] : ['rotate', 'translate', 'scale', 'shear'])[type];
+          const type = r.byte();
+          if (series === '2.1' && (type === 5 || type === 6)) {
+            timelines[type === 5 ? 'flipX' : 'flipY'] = frames([[type === 5 ? 'x' : 'y', () => r.bool()]], false); continue;
+          }
+          const kind = (pre32 ? ['scale', 'rotate', 'translate'] : ['rotate', 'translate', 'scale', 'shear'])[type];
           if (!kind) throw new Error(`Invalid bone timeline ${type}.`);
           timelines[kind] = frames(kind === 'rotate' ? [['angle', () => r.float()]] : [['x', () => r.float()], ['y', () => r.float()]]);
         }
@@ -270,10 +277,11 @@
       }]], false).map(frame => ({ time: frame.time, ...frame.event }));
       if (!animation.drawOrder.length) delete animation.drawOrder;
       if (!animation.events.length) delete animation.events;
+      if (v2) { animation.ffd = animation.deform; delete animation.deform; }
       json.animations[name] = animation;
     }
     if (r.offset !== r.bytes.length) throw new Error(`Unexpected trailing data in Spine ${series} export.`);
-    return old ? normalize32(json) : json;
+    return v2 ? json : old ? normalize32(json) : json;
   }
   return { decode, normalize32 };
 });

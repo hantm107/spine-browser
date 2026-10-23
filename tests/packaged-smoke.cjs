@@ -39,7 +39,7 @@ async function run(){
   checks.push('Packaged category modules create more than eight uniquely colored categories');
   const ratio=await evaluate(`(()=>{const r=document.getElementById('previewBox').getBoundingClientRect();return r.width/r.height;})()`);
   assert.ok(Math.abs(ratio-1.6)<0.01);checks.push('Packaged preview uses 16:10 proportions');
-  const seriesToTest=process.env.PACKAGED_TEST_SERIES?.split(',') || ['3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2'];
+  const seriesToTest=process.env.PACKAGED_TEST_SERIES?.split(',') || ['2.0','2.1','3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2'];
   for(const series of seriesToTest)for(const ext of ['json','skel']){
     const file=path.join(root,'tests/fixtures',series,`spineboy-pro.${ext}`);
     await evaluate(`selectProject(${JSON.stringify({id:file,fullPath:file,fileName:path.basename(file),name:series,folder:'test'})})`);

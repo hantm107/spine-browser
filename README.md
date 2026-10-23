@@ -2,6 +2,8 @@
 
 A local Electron browser for Spine editor projects and exported animations.
 
+Legacy **Spine 2.0 and 2.1** JSON and binary skeleton exports are supported alongside the existing 3.x and 4.x runtimes. Native 2.x animation behavior includes bone flips, IK, weighted meshes, and FFD. Related `.spine` projects can preview their accompanying exports as usual. Unversioned legacy JSON uses a clearly labeled 2.1 compatibility fallback; unversioned/`Dev` binary exports cannot be safely identified and remain unsupported. Reference coverage and archive-specific limitations are documented in [vendor/README.md](vendor/README.md) and [tests/fixtures/README.md](tests/fixtures/README.md). Original assets are never rewritten.
+
 The library uses the left half of the window, with a dedicated category column and a full-height file browser beside it. List and grid views automatically add columns as space permits. The smaller animation preview and playback controls occupy the right half.
 
 The original app code is covered by the repository's [MIT license](LICENSE). Bundled and derived Spine runtime code, compatibility readers, and upstream sample assets retain their upstream license terms; see [vendor/README.md](vendor/README.md) and [tests/fixtures/README.md](tests/fixtures/README.md). The MIT license does not replace those third-party terms.

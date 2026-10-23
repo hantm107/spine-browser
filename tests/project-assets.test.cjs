@@ -53,7 +53,7 @@ test('routes every supported series to a matching runtime and rejects unknown ve
   const dir = await fixture(t, { 'modern.json': json(), 'other.json': json('4.4.1'), 'old.json': json('3.9.99'), 'bad.skel': 'not an export' });
   assert.equal((await assets.detectSpineFileCompatibility(path.join(dir, 'modern.json'))).runtime, 'modern');
   for (const file of ['other.json', 'old.json', 'bad.skel']) assert.equal((await assets.detectSpineFileCompatibility(path.join(dir, file))).mismatch, true);
-  for (const series of ['3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2','4.3']) {
+  for (const series of ['2.0','2.1','3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2','4.3']) {
     const file = path.join(dir, `${series}.json`);
     await fs.writeFile(file, json(`${series}.99`));
     const result = await assets.detectSpineFileCompatibility(file);
@@ -64,7 +64,7 @@ test('routes every supported series to a matching runtime and rejects unknown ve
 });
 
 test('detects the version from binary fixtures for every supported series', async () => {
-  for (const series of ['3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2']) {
+  for (const series of ['2.0','2.1','3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2']) {
     const result = await assets.detectSpineFileCompatibility(path.join(__dirname, 'fixtures', series, 'spineboy-pro.skel'));
     assert.equal(result.series, series);
     assert.equal(result.mismatch, false);

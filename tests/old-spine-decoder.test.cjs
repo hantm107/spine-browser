@@ -5,6 +5,19 @@ const path=require('node:path');
 const {decode,normalize32}=require('../old-spine-decoder');
 const fixture=(series,extension)=>fs.readFileSync(path.join(__dirname,'fixtures',series,`spineboy-pro.${extension}`));
 
+test('2.x binary readers preserve weighted meshes, FFD, events and flip timelines',()=>{
+  for (const series of ['2.0','2.1']) {
+    const data=decode(fixture(series,'skel'),series), reference=JSON.parse(fixture(series,'json'));
+    assert.deepEqual(data.skins.default.mesh.quad.vertices,reference.skins.default.mesh.quad.vertices);
+    assert.equal(data.skins.default.mesh.quad.type,'skinnedmesh');
+    assert.deepEqual(data.animations.idle.bones.root,reference.animations.idle.bones.root);
+    assert.deepEqual(data.animations.idle.events,reference.animations.idle.events);
+    assert.deepEqual(data.animations.idle.ffd.default.mesh.quad[1],{offset:0,...reference.animations.idle.ffd.default.mesh.quad[1]});
+    assert.throws(()=>decode(fixture(series,'skel').subarray(0,60),series),/Truncated|Invalid/);
+    assert.throws(()=>decode(fixture(series,'skel'),series==='2.0'?'2.1':'2.0'),/header/);
+  }
+});
+
 test('3.0 and 3.1 layouts preserve mesh weights, timelines, draw order and signed events',()=>{
   for (const series of ['3.0','3.1']) {
     const data=decode(fixture(series,'skel'),series);

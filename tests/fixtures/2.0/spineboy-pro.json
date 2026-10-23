@@ -1,0 +1,241 @@
+{
+  "skeleton": {
+    "hash": "synthetic-32",
+    "spine": "2.0.07",
+    "width": 64,
+    "height": 64,
+    "images": "./"
+  },
+  "bones": [
+    {
+      "name": "root"
+    },
+    {
+      "name": "tip",
+      "parent": "root",
+      "x": 30,
+      "length": 20
+    },
+    {
+      "name": "target",
+      "parent": "root",
+      "x": 20,
+      "y": 25
+    }
+  ],
+  "ik": [
+    {
+      "name": "aim",
+      "bones": [
+        "tip"
+      ],
+      "target": "target",
+      "mix": 0.5,
+      "bendPositive": false
+    }
+  ],
+  "slots": [
+    {
+      "name": "mesh",
+      "bone": "root",
+      "attachment": "quad"
+    },
+    {
+      "name": "region",
+      "bone": "tip",
+      "attachment": "spark"
+    }
+  ],
+  "skins": {
+    "default": {
+      "mesh": {
+        "quad": {
+          "type": "skinnedmesh",
+          "path": "square",
+          "uvs": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "triangles": [
+            0,
+            1,
+            2,
+            2,
+            3,
+            0
+          ],
+          "vertices": [
+            1,
+            0,
+            -32,
+            -32,
+            1,
+            1,
+            0,
+            32,
+            -32,
+            1,
+            1,
+            0,
+            32,
+            32,
+            1,
+            1,
+            0,
+            -32,
+            32,
+            1
+          ],
+          "hull": 4
+        }
+      },
+      "region": {
+        "spark": {
+          "path": "square",
+          "width": 16,
+          "height": 16,
+          "x": 3,
+          "y": 4
+        }
+      }
+    }
+  },
+  "events": {
+    "hit": {
+      "int": -7,
+      "float": 0.5,
+      "string": "bang"
+    }
+  },
+  "animations": {
+    "idle": {
+      "slots": {
+        "mesh": {
+          "color": [
+            {
+              "time": 0,
+              "color": "ffffffff",
+              "curve": "stepped"
+            },
+            {
+              "time": 1,
+              "color": "ffffffff"
+            }
+          ],
+          "attachment": [
+            {
+              "time": 0,
+              "name": "quad"
+            }
+          ]
+        }
+      },
+      "bones": {
+        "root": {
+          "rotate": [
+            {
+              "time": 0,
+              "angle": 0,
+              "curve": [
+                0.25,
+                0,
+                0.75,
+                1
+              ]
+            },
+            {
+              "time": 1,
+              "angle": 60
+            }
+          ],
+          "translate": [
+            {
+              "time": 0,
+              "x": 0,
+              "y": 0,
+              "curve": "stepped"
+            },
+            {
+              "time": 1,
+              "x": 4,
+              "y": 2
+            }
+          ],
+          "scale": [
+            {
+              "time": 0,
+              "x": 1,
+              "y": 1
+            },
+            {
+              "time": 1,
+              "x": 1.25,
+              "y": 1.25
+            }
+          ]
+        }
+      },
+      "ik": {
+        "aim": [
+          {
+            "time": 0,
+            "mix": 0.5,
+            "bendPositive": false
+          },
+          {
+            "time": 1,
+            "mix": 1,
+            "bendPositive": true
+          }
+        ]
+      },
+      "ffd": {
+        "default": {
+          "mesh": {
+            "quad": [
+              {
+                "time": 0
+              },
+              {
+                "time": 1,
+                "vertices": [
+                  3,
+                  4
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "drawOrder": [
+        {
+          "time": 0
+        },
+        {
+          "time": 1,
+          "offsets": [
+            {
+              "slot": "mesh",
+              "offset": 1
+            }
+          ]
+        }
+      ],
+      "events": [
+        {
+          "time": 0.25,
+          "name": "hit",
+          "int": -9,
+          "float": 0.75,
+          "string": "zap"
+        }
+      ]
+    }
+  }
+}

@@ -1,5 +1,13 @@
 # Spine compatibility runtimes
 
+## Spine 2.x
+
+`spine-core-2.1.js` is the official `spine-js/spine.js` at tag [2.1.25](https://github.com/EsotericSoftware/spine-runtimes/tree/142e770e5b4b42395a3a0a68ff3c8a21ba2774eb), wrapped as `window.spine21`. The core preserves native 2.x bone inheritance, flips, IK, mesh weighting, and FFD. The 2.0 compatibility path uses the same core after decoding its distinct binary layout. `spine-2x-bridge.js` supplies WebGL rendering through the existing 3.4 batcher/atlas, bounds calculation, and an animation-name API adapter. It does not convert 2.x bone transforms to 3.x transforms.
+
+Local fixes to the archived JS core: use `getFrameCount()` for IK/FFD durations; qualify `this.boneIndex` in flip timelines; initialize sparse FFD arrays with zeroes; default omitted rotation angles to zero; read setup-pose bone flip flags. These repair upstream JavaScript reader/runtime defects and follow the Java reader's defaults. The original license header is preserved, with the complete license in `LICENSE.spine-2.1`.
+
+The binary readers in `old-spine-decoder.js` follow official `SkeletonBinary.java` at tags **2.0.18** (`309889c65336eab821e8ef695a5ce9ea77069bb2`, `spine-libgdx/src/com/esotericsoftware/spine/`) and **2.1.25** (`142e770e5b4b42395a3a0a68ff3c8a21ba2774eb`, `spine-libgdx/spine-libgdx/src/com/esotericsoftware/spine/`). The 2.0 license is retained as `LICENSE.spine-2.0`. Differences include nonessential metadata and 2.1 bone/animation flip fields. Numeric version headers select the matching reader; unknown binary versions are rejected rather than guessed. Unversioned JSON with the legacy object-based skins/slots/animations structure uses a visibly labeled 2.1 compatibility fallback. No export file is changed.
+
 `spine-webgl-3.4.js` comes from the official `spine-ts/build/spine-webgl.js` at the [3.4.02 tag](https://github.com/EsotericSoftware/spine-runtimes/tree/ef5013143178918ddfc7cabfbddeae7aec7cf84e), commit `ef5013143178918ddfc7cabfbddeae7aec7cf84e`, with its license in `LICENSE.spine-3.4`. It is wrapped to expose `window.spine34`. Two path-length bugs in its JSON reader are corrected: integer division for the length array and an accidentally doubled loop increment.
 
 `old-spine-decoder.js` implements the older binary layouts using these official format references:

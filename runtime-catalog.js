@@ -4,6 +4,8 @@
   if (typeof module === 'object' && module.exports) module.exports = catalog;
   else root.spineRuntimeCatalog = catalog;
 })(typeof window === 'undefined' ? globalThis : window, () => ({
+  '2.0': { runtime: 'legacy20', kind: 'legacy', version: '2.0', namespace: 'spine21', binaryDecoder: 'old', scripts: ['vendor/spine-webgl-3.4.js', 'vendor/spine-core-2.1.js', 'old-spine-decoder.js', 'vendor/spine-2x-bridge.js'] },
+  '2.1': { runtime: 'legacy21', kind: 'legacy', version: '2.1', namespace: 'spine21', binaryDecoder: 'old', scripts: ['vendor/spine-webgl-3.4.js', 'vendor/spine-core-2.1.js', 'old-spine-decoder.js', 'vendor/spine-2x-bridge.js'] },
   '3.0': { runtime: 'legacy30', kind: 'legacy', version: '3.0', namespace: 'spine34', binaryDecoder: 'old', scripts: ['vendor/spine-webgl-3.4.js', 'old-spine-decoder.js'] },
   '3.1': { runtime: 'legacy31', kind: 'legacy', version: '3.1', namespace: 'spine34', binaryDecoder: 'old', scripts: ['vendor/spine-webgl-3.4.js', 'old-spine-decoder.js'] },
   '3.3': { runtime: 'legacy33', kind: 'legacy', version: '3.3', namespace: 'spine34', binaryDecoder: 'old', scripts: ['vendor/spine-webgl-3.4.js', 'old-spine-decoder.js'] },

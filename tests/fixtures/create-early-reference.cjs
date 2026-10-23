@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const series = process.argv[2] || '3.1';
-const early = series === '3.0';
+const v2 = series.startsWith('2.');
+const early = v2 || series === '3.0';
 const chunks = [];
 const byte = n => chunks.push(Buffer.from([n & 255]));
 function int(value, positive = true) { let n = positive ? value >>> 0 : ((value << 1) ^ (value >> 31)) >>> 0; do { const part = n & 127; n >>>= 7; byte(part | (n ? 128 : 0)); } while (n); }
@@ -27,9 +28,12 @@ const model = {
 model.skeleton.spine=series+'.07';
 for(const b of model.bones){delete b.shearX;delete b.shearY;}
 if(early){delete model.transform;delete model.skins.default.mesh.linked;}
-text(model.skeleton.hash); text(model.skeleton.spine); values(64,64); byte(1); text('./');
+if(v2)model.skins.default.mesh.quad.type='skinnedmesh';
+if(series==='2.1')model.bones[1].flipY=true;
+if(series==='2.1')model.animations.idle.bones.root.flipX=[{time:0,x:false},{time:0.5,x:true},{time:1,x:false}];
+text(model.skeleton.hash); text(model.skeleton.spine); values(64,64); byte(1); if(series!=='2.0')text('./');
 int(3);
-for (let i=0;i<3;i++) { const b=model.bones[i]; text(b.name); if(early)int(i?1:0);else if(i)int(0); values(b.x||0,b.y||0,1,1,0,b.length||0);byte(1);byte(1);color(); }
+for (let i=0;i<3;i++) { const b=model.bones[i]; text(b.name); if(early)int(i?1:0);else if(i)int(0); values(b.x||0,b.y||0,1,1,0,b.length||0);if(series==='2.1'){byte(b.flipX?1:0);byte(b.flipY?1:0);}byte(1);byte(1);color(); }
 int(1); text('aim');int(1);int(1);int(2);float(0.5);byte(255);
 if(!early){int(1);text('follow');int(1);int(2);values(0.125,2,3);}
 int(2);for(let i=0;i<2;i++){text(model.slots[i].name);int(i);color();text(model.slots[i].attachment);int(0);}
@@ -43,10 +47,11 @@ int(1);text('idle');
 int(1);int(0);int(2); // slot timelines
 byte(4);int(2);float(0);color();byte(1);float(1);color();
 byte(3);int(1);float(0);text('quad');
-int(1);int(0);int(3); // bone timelines
+int(1);int(0);int(series==='2.1'?4:3); // bone timelines
 byte(1);int(2);values(0,0);byte(2);values(0.25,0,0.75,1);values(1,60);
 byte(2);int(2);values(0,0,0);byte(1);values(1,4,2);
 byte(0);int(2);values(0,1,1);byte(0);values(1,1.25,1.25);
+if(series==='2.1'){byte(5);int(3);float(0);byte(0);float(0.5);byte(1);float(1);byte(0);}
 int(1);int(0);int(2);values(0,0.5);byte(255);byte(0);values(1,1);byte(1);
 // No transform timelines before 3.2.
 int(1);int(0);int(1);int(0);int(1);text('quad');int(2);float(0);int(0);byte(0);float(1);int(2);int(0);values(3,4);
