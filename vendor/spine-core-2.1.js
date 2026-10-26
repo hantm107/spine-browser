@@ -2136,7 +2136,9 @@ spine.SkeletonJson.prototype = {
 						while (originalIndex != slotIndex)
 							unchanged[unchangedIndex++] = originalIndex++;
 						// Set changed items.
-						drawOrder[originalIndex + offsetMap["offset"]] = originalIndex++;
+						// Some legacy JSON converters expand negative varints to 35-bit
+						// unsigned values. Recover the signed 32-bit slot displacement.
+						drawOrder[originalIndex + (offsetMap["offset"] | 0)] = originalIndex++;
 					}
 					// Collect remaining unchanged items.
 					while (originalIndex < slotCount)

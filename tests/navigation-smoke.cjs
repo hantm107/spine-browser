@@ -35,6 +35,29 @@ module.exports = async ({evaluate,until,check,wait,win}) => {
   await check('clicking the preview canvas resumes playback','activePlayer.paused',r=>assert.equal(r,false));
   await evaluate('document.getElementById("playPauseBtn").click()');
   await check('playback control button still toggles pause','activePlayer.paused',r=>assert.equal(r,true));
+  const preview = await evaluate(`(()=>{
+    activePlayer.paused=true;
+    const entry=activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0);
+    playbackControls.seek(entry.animation.duration/2);
+    const rect=activePlayer.canvas.getBoundingClientRect();
+    return {x:Math.round(rect.x+rect.width/2),y:Math.round(rect.y+rect.height/2),distance:Math.round(rect.width/4),duration:entry.animation.duration};
+  })()`);
+  const mouse = (type,x,extra={}) => win.webContents.sendInputEvent({type,x,y:preview.y,...extra});
+  mouse('mouseDown',preview.x,{button:'left',clickCount:1});
+  mouse('mouseMove',preview.x+preview.distance,{button:'left'});
+  mouse('mouseUp',preview.x+preview.distance,{button:'left',clickCount:1});
+  await wait(60);
+  await check('dragging the preview seeks forward, stays paused, and updates the timeline',`({time:playbackControls.currentTime(),paused:activePlayer.paused,timeline:Number(document.getElementById('timeline').value)})`,r=>{
+    assert.ok(Math.abs(r.time-preview.duration*0.75)<0.03);
+    assert.equal(r.paused,true);assert.ok(Math.abs(r.timeline-r.time)<0.01);
+  });
+  mouse('mouseDown',preview.x,{button:'left',clickCount:1});
+  mouse('mouseMove',preview.x-preview.distance,{button:'left'});
+  mouse('mouseUp',preview.x-preview.distance,{button:'left',clickCount:1});
+  await wait(60);
+  await check('dragging the preview seeks backward','playbackControls.currentTime()',r=>assert.ok(Math.abs(r-preview.duration/2)<0.03));
+  await evaluate('playerHost.querySelector("canvas").click()');
+  await check('click to resume still works after scrubbing','activePlayer.paused',r=>assert.equal(r,false));
   await evaluate('setupPreview=window.navigationOriginalSetup;delete window.navigationOriginalSetup;delete window.navigationLoads;projectList.focus()');
   win.setSize(1200,850);await wait(100);
 };

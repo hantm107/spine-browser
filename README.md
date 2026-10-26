@@ -2,7 +2,7 @@
 
 A local Electron browser for Spine editor projects and exported animations.
 
-Use Left/Right to browse adjacent files and Up/Down to move between visual rows in the library. Highlighting updates immediately; the preview loads after 200 ms without another arrow press, so holding a key skips intermediate loads. Navigation follows the current search/category filters and scrolls the highlighted card into view. Arrow keys retain their usual behavior in text fields and controls. Click the animation canvas to pause/resume, or use the existing playback buttons.
+Use Left/Right to browse adjacent files and Up/Down to move between visual rows in the library. Highlighting updates immediately; the preview loads after 200 ms without another arrow press, so holding a key skips intermediate loads. Navigation follows the current search/category filters and scrolls the highlighted card into view. Arrow keys retain their usual behavior in text fields and controls. Click the animation canvas to pause/resume, or drag left/right to scrub the animation while paused. The selected asset has a bright green outline.
 
 Preview blending supports Normal, Additive, Multiply, and Screen with straight-alpha and premultiplied atlas textures. Textures are normalized to premultiplied alpha in GPU memory per atlas page (`pma: true` pages are not multiplied twice). Older Screen blending uses the corrected destination-color factor. The source atlas, textures, and skeleton blend settings are never rewritten.
 
@@ -17,7 +17,7 @@ npm install
 npm start
 ```
 
-To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.3.0-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
+To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.3.1-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
 
 `node tests/packaged-smoke.cjs` launches the generated executable with a temporary user profile and checks JSON and binary playback using the checked-in fixtures. It saves results and a screenshot under `.temp/`.
 

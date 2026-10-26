@@ -418,10 +418,7 @@ document.addEventListener('keydown', event => {
     if (navigationProject===pending && filteredProjects().some(p=>p.id===pending.id)) selectProject(pending);
   },200);
 });
-playerHost.addEventListener('click', event => {
-  if (event.target.closest('canvas') && activePlayer?.skeleton && !activePlayer.disposed) activePlayer.paused = !activePlayer.paused;
-});
-playerHost.title = 'Click the animation to pause or resume playback.';
+playerHost.title = 'Drag left or right to scrub the animation. Click to pause or resume playback.';
 
 async function openSelected(method, title, message) {
   const project = selectedProject;

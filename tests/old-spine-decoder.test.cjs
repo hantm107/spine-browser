@@ -5,6 +5,29 @@ const path=require('node:path');
 const {decode,normalize32}=require('../old-spine-decoder');
 const fixture=(series,extension)=>fs.readFileSync(path.join(__dirname,'fixtures',series,`spineboy-pro.${extension}`));
 
+test('2.x draw order recovers signed offsets from legacy converted JSON',()=>{
+  const vm=require('node:vm'), context={window:{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../vendor/spine-core-2.1.js'),'utf8'),context);
+  const s=context.window.spine21;
+  for (const key of ['drawOrder','draworder']) for (const unsigned of [false,true]) {
+    const input={bones:[{name:'root'}],slots:Array.from({length:16},(_,i)=>({name:`slot${i}`,bone:'root'})),animations:{idle:{[key]:[
+      {time:0,offsets:[{slot:'slot3',offset:unsigned?34359738365:-3},{slot:'slot7',offset:unsigned?34359738362:-6}]},
+      {time:1,offsets:[{slot:'slot0',offset:2}]},
+      {time:2},
+    ]}}};
+    const original=JSON.stringify(input),data=new s.SkeletonJson({}).readSkeletonData(input),skeleton=new s.Skeleton(data);
+    const animation=data.animations[0];
+    const names=()=>Array.from(skeleton.drawOrder,slot=>slot.data.name);
+    animation.apply(skeleton,0,0,false,[]);
+    assert.deepEqual(names(),[3,7,0,1,2,4,5,6,8,9,10,11,12,13,14,15].map(i=>`slot${i}`));
+    animation.apply(skeleton,0,1,false,[]);
+    assert.deepEqual(names(),[1,2,0,3,4,5,6,7,8,9,10,11,12,13,14,15].map(i=>`slot${i}`));
+    animation.apply(skeleton,1,2,false,[]);
+    assert.deepEqual(names(),input.slots.map(slot=>slot.name));
+    assert.equal(JSON.stringify(input),original);
+  }
+});
+
 test('2.x binary readers preserve weighted meshes, FFD, events and flip timelines',()=>{
   for (const series of ['2.0','2.1']) {
     const data=decode(fixture(series,'skel'),series), reference=JSON.parse(fixture(series,'json'));

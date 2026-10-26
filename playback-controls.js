@@ -46,6 +46,36 @@ window.attachPlaybackControls = function(player, project, preferences, save, sta
   const timeline=document.createElement('input');timeline.type='range';timeline.id='timeline';timeline.min=0;timeline.max=duration();timeline.step='0.001';timeline.setAttribute('aria-label','Animation timeline');
   timeline.oninput=()=>{player.paused=true;seek(Number(timeline.value));};host.append(timeline);
   const time=document.createElement('output');time.id='playbackTime';host.append(time);
+  const canvas=player.canvas;
+  let scrub=null, suppressClick=false;
+  function pointerDown(event) {
+    if(event.button!==0 || !event.isPrimary || !duration())return;
+    suppressClick=false;
+    scrub={id:event.pointerId,x:event.clientX,time:position(),width:canvas.getBoundingClientRect().width,dragging:false};
+    canvas.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+  function pointerMove(event) {
+    if(!scrub || event.pointerId!==scrub.id)return;
+    const distance=event.clientX-scrub.x;
+    if(!scrub.dragging && Math.abs(distance)<4)return;
+    scrub.dragging=true;suppressClick=true;player.paused=true;
+    canvas.classList.add('scrubbing');
+    seek(scrub.time+distance/Math.max(1,scrub.width)*duration());
+  }
+  function pointerEnd(event) {
+    if(!scrub || event.pointerId!==scrub.id)return;
+    if(event.type==='pointerup')pointerMove(event);
+    scrub=null;canvas.classList.remove('scrubbing');
+    if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+  }
+  function previewClick(event) {
+    if(event.button!==0)return;
+    if(suppressClick){suppressClick=false;event.stopImmediatePropagation();return;}
+    if(!player.disposed)player.paused=!player.paused;
+  }
+  const previewEvents={pointerdown:pointerDown,pointermove:pointerMove,pointerup:pointerEnd,pointercancel:pointerEnd,lostpointercapture:pointerEnd,click:previewClick};
+  if(canvas)for(const [name,handler]of Object.entries(previewEvents))canvas.addEventListener(name,handler,true);
   const capture=button('Update thumbnail',()=>window.captureSelectedThumbnail?.());capture.id='captureThumbnailBtn';
   const remembered=preferences.animations?.[project.id];if(buttons.has(remembered))choose(remembered,false);
   else if(track()){track().loop=loop;const b=buttons.get(track().animation.name);b?.classList.add('active');b?.setAttribute('aria-pressed','true');}
@@ -59,5 +89,13 @@ window.attachPlaybackControls = function(player, project, preferences, save, sta
     frameId=requestAnimationFrame(update);
   }
   update();
-  return { dispose(){cancelAnimationFrame(frameId);host.replaceChildren();host.hidden=true;}, seek, choose, currentTime };
+  return { dispose(){
+    cancelAnimationFrame(frameId);
+    if(canvas){
+      for(const [name,handler]of Object.entries(previewEvents))canvas.removeEventListener(name,handler,true);
+      if(scrub && canvas.hasPointerCapture(scrub.id))canvas.releasePointerCapture(scrub.id);
+      canvas.classList.remove('scrubbing');scrub=null;
+    }
+    host.replaceChildren();host.hidden=true;
+  }, seek, choose, currentTime };
 };
