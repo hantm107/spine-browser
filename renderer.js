@@ -13,8 +13,34 @@ const projectHeader = document.getElementById('projectHeader');
 const previewTitle = document.getElementById('previewTitle');
 const previewText = document.getElementById('previewText');
 const playerHost = document.getElementById('playerHost');
+document.getElementById('importWorkspaceBtn').onclick=()=>window.spineApi.openImportWorkspace();
 
 let workspace = {};
+let appendBookmarks={},appendRefresh=0;
+const appendPending=new Set();
+const appendPathKey=file=>/^[a-z]:/i.test(file||'')?file.replace(/\\/g,'/').toLowerCase():(file||'').replace(/\\/g,'/');
+function appendSourcePath(project){return (project.files||[]).find(f=>/\.spine$/i.test(f.fullPath))?.fullPath||project.fullPath;}
+function appendRecord(project){const key=appendPathKey(appendSourcePath(project));return Object.values(appendBookmarks).find(p=>appendPathKey(p.fullPath)===key);}
+async function refreshAppendList(){
+  const request=++appendRefresh;
+  try{
+    const records=await window.spineApi.getAppendList();if(request!==appendRefresh)return;
+    appendBookmarks=Object.fromEntries(records.map(p=>[p.id,p]));renderCategories();
+    if(activeCategory()==='append')refreshProjectList();else renderProjectList(filteredProjects());
+  }catch(error){document.getElementById('categoryMessage').textContent='Append list: '+describeError(error);}
+}
+async function toggleAppend(project){
+  const file=appendRecord(project)?.fullPath||appendSourcePath(project),key=appendPathKey(file);if(appendPending.has(key))return;
+  appendPending.add(key);
+  try{await window.spineApi.setAppendList(file,!appendRecord(project));await refreshAppendList();}
+  catch(error){document.getElementById('categoryMessage').textContent='Append list: '+describeError(error);}
+  finally{appendPending.delete(key);}
+}
+async function useAppendSource(project){
+  const record=appendRecord(project)||project;
+  try{await window.spineApi.openImportWorkspace(record.fullPath);}
+  catch(error){document.getElementById('categoryMessage').textContent=describeError(error);}
+}
 try { workspace = JSON.parse(localStorage.getItem('workspaceV1') || '{}') || {}; } catch {}
 workspace.favorites ||= {}; workspace.recent ||= [];
 workspace.categories=Array.isArray(workspace.categories)?workspace.categories:[];
@@ -30,7 +56,7 @@ function favoriteProjects(records = workspace.favorites) {
 }
 async function refreshFavorites() {
   const request=++favoriteRefresh;
-  const collections=[workspace.favorites,...workspace.categories.map(c=>c.assets)];
+  const collections=[workspace.favorites,appendBookmarks,...workspace.categories.map(c=>c.assets)];
   const projects=[...new Map(collections.flatMap(collection=>favoriteProjects(collection)).map(p=>[p.id,p])).values()];
   const records=await Promise.all(projects.map(async project=>{
     try { return {...project,...await window.spineApi.inspectFavorite(project.fullPath),id:project.id}; }
@@ -124,6 +150,7 @@ function updateSummary() {
   if (!hasScannedFolder && !activeBookmarkMap()) return;
   const count = filteredProjects().length;
   const category=workspace.categories.find(c=>c.id===activeCategory());
+  if(activeCategory()==='append'){summary.textContent=`${count} of ${Object.keys(appendBookmarks).length} Append list sources shown`;return;}
   if(category){summary.textContent=count+' of '+Object.keys(category.assets).length+' in '+category.name;return;}
   summary.textContent = favoritesOnly.checked ? `${count} of ${favoriteProjects().length} global favorites shown` : count + ' of ' + allProjects.length + ' assets shown' + (scanWarnings.length ? ' - ' + scanWarnings.length + ' paths skipped' : '');
 }
@@ -178,14 +205,20 @@ function renderProjectList(projects) {
     favorite.onclick=event=>{event.stopPropagation();if(workspace.favorites[project.id])delete workspace.favorites[project.id];else workspace.favorites[project.id]=bookmark(project);saveWorkspace();refreshProjectList();};
     const actions=document.createElement('div');actions.className='asset-bookmark-actions';
     const tags=document.createElement('button');tags.className='edit-asset-tags';tags.textContent='Tags';tags.setAttribute('aria-label','Assign categories to '+project.name);tags.onclick=event=>{event.stopPropagation();editAssetCategories(project);};
-    actions.append(favorite,tags);item.append(image,text,actions);
+    const appended=!!appendRecord(project),append=document.createElement('button');append.className='append-list-button';append.textContent=appended?'In Append':'Append +';append.setAttribute('aria-label',(appended?'Remove from':'Add to')+' Append list: '+project.name);append.setAttribute('aria-pressed',String(appended));
+    append.onclick=event=>{event.stopPropagation();toggleAppend(project);};
+    actions.append(favorite,append,tags);
+    if(activeCategory()==='append'){
+      const use=document.createElement('button');use.className='use-append-source';use.textContent='Import animation';use.disabled=!!project.unavailable||project.imagesAvailable===false;use.title=project.imagesAvailable===false?'This source needs an images folder beside its project.':'Open this source in the Import workspace';use.onclick=event=>{event.stopPropagation();useAppendSource(project);};actions.append(use);
+    }
+    item.append(image,text,actions);
     item.addEventListener('click', () => { selectProject(project); projectList.focus({preventScroll:true}); });
     fragment.append(item);
   }
   if (!projects.length) {
     const empty = document.createElement('li');
     empty.className = 'project-item';
-    empty.textContent = activeBookmarkMap() ? (searchInput.value.trim()?'No matching bookmarks':'No bookmarked assets in this category') : allProjects.length ? 'No matching files' : 'No Spine files found';
+    empty.textContent = activeCategory()==='append'?(searchInput.value.trim()?'No matching Append list sources':'Append list is empty. Add sources with Append +.'):activeBookmarkMap() ? (searchInput.value.trim()?'No matching bookmarks':'No bookmarked assets in this category') : allProjects.length ? 'No matching files' : 'No Spine files found';
     fragment.append(empty);
   }
   projectList.replaceChildren(fragment);
@@ -434,5 +467,7 @@ initializeCategories();
 updateDetailPanel(null);
 clearPreview();
 renderProjectList([]);
+window.spineApi.onAppendListChanged(()=>refreshAppendList());
+refreshAppendList();
 if(workspace.folder)chooseFolder(workspace.folder);
 else refreshFavorites().then(()=>{refreshProjectList();saveWorkspace();});

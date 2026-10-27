@@ -201,6 +201,15 @@ async function run() {
   await evaluate(`selectProject(${project(upperFile.replace('.json', '.JSON'))})`);
   await until('!!activePlayer?.skeleton');
   await check('uppercase JSON extensions play', `activePlayer.animationState.getTrack(0).animation.name`, r => assert.equal(r, 'Idle'));
+  for (const [series,extension] of [['3.6','json'],['4.2','skel']]) {
+    const folder=path.join(fixtures,'unity-'+series);
+    fs.cpSync(path.join(root,'tests/fixtures',series),folder,{recursive:true});
+    const atlas=path.join(folder,'spineboy-pro.atlas');
+    fs.writeFileSync(atlas+'.TXT','\uFEFF'+fs.readFileSync(atlas,'utf8'));fs.unlinkSync(atlas);
+    await evaluate(`selectProject(${project(path.join(folder,'spineboy-pro.'+extension))})`);
+    await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.05');
+    await check(`${series} ${extension} plays with BOM-prefixed Unity .atlas.txt`, '({version:activePlayer.skeleton.data.version,paused:activePlayer.paused})', r=>{assert.ok(r.version.startsWith(series));assert.equal(r.paused,false);});
+  }
   await evaluate(`selectProject(${project(rawFile)})`);
   await check('raw project clears a previously playing export', `({title:previewTitle.textContent,player:!!activePlayer,count:playerHost.children.length,editorDisabled:openSpineBtn.disabled})`, r => { assert.equal(r.title, 'Spine editor project'); assert.equal(r.player, false); assert.equal(r.count, 0); assert.equal(r.editorDisabled, false); });
   await evaluate(`selectProject(${project(brokenFile)})`);
@@ -263,6 +272,19 @@ async function run() {
   await check('global favorites and external selection survive reload', '({folder:currentFolder,path:selectedProject.fullPath,count:filteredProjects().length})',r=>{assert.equal(r.folder,path.dirname(modernFile));assert.equal(r.path,sample);assert.equal(r.count,2);});
   await evaluateAsync(`await selectProject(filteredProjects().find(p=>p.fullPath===${JSON.stringify(modernFile)}));document.querySelectorAll('.favorite-button')[1].click()`);
   await check('unbookmarking updates the global library', 'Object.keys(workspace.favorites).length',r=>assert.equal(r,1));
+  fs.mkdirSync(path.join(path.dirname(sample),'images'),{recursive:true});
+  await evaluateAsync(`await spineApi.setAppendList(${JSON.stringify(sample)},true);await refreshAppendList();await selectCategory('append')`);
+  await until('!!activePlayer?.skeleton');
+  await check('Append list browses saved sources globally without changing Favorites',`({active:activeCategory(),path:selectedProject.fullPath,count:filteredProjects().length,favorites:Object.keys(workspace.favorites).length,button:!!document.querySelector('.use-append-source')})`,r=>{assert.equal(r.active,'append');assert.equal(r.path,sample);assert.equal(r.count,1);assert.equal(r.favorites,1);assert.equal(r.button,true);});
+  let appendRequested;
+  electron.ipcMain.removeHandler('open-import-workspace');electron.ipcMain.handle('open-import-workspace',(_event,file)=>{appendRequested=file;});
+  await evaluate('document.querySelector(".use-append-source").click()');for(let i=0;i<30&&!appendRequested;i++)await wait(10);
+  assert.equal(appendRequested,sample);checks.push({name:'Append list sends its saved file directly to the import workspace'});
+  const appendReload=new Promise(resolve=>win.webContents.once('did-finish-load',resolve));win.reload();await appendReload;
+  await until('Object.keys(appendBookmarks).length===1&&!!selectedProject');
+  await check('Append list membership and category survive reload',`({active:activeCategory(),path:selectedProject.fullPath,count:filteredProjects().length})`,r=>{assert.equal(r.active,'append');assert.equal(r.path,sample);assert.equal(r.count,1);});
+  await evaluateAsync('await toggleAppend(selectedProject)');
+  await check('removing an Append list bookmark preserves the file and Favorites','({count:Object.keys(appendBookmarks).length,favorites:Object.keys(workspace.favorites).length})',r=>{assert.equal(r.count,0);assert.equal(r.favorites,1);assert.equal(fs.existsSync(sample),true);});
   electron.ipcMain.removeHandler('select-folder');
   const categoryAsset=sample;
   await evaluateAsync(`await selectCategory('all');searchInput.value='';await chooseFolder(${JSON.stringify(path.dirname(sample))});const fire=createCategory('Fire VFX');const blast=createCategory('Explosions');assignCategory(fire.id,selectedProject,true);assignCategory(blast.id,selectedProject,true);`);

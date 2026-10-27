@@ -1,15 +1,16 @@
 // UI uses the same workspace persistence and absolute-path records as Favorites.
-function activeCategory(){return favoritesOnly.checked?'favorites':workspace.categories.find(c=>c.id===workspace.category)?.id || 'all';}
-function activeBookmarkMap(){const id=activeCategory();return id==='favorites'?workspace.favorites:workspace.categories.find(c=>c.id===id)?.assets;}
+function activeCategory(){return favoritesOnly.checked?'favorites':workspace.category==='append'?'append':workspace.categories.find(c=>c.id===workspace.category)?.id || 'all';}
+function activeBookmarkMap(){const id=activeCategory();return id==='favorites'?workspace.favorites:id==='append'?appendBookmarks:workspace.categories.find(c=>c.id===id)?.assets;}
 async function selectCategory(id){
   workspace.category=id;favoritesOnly.checked=id==='favorites';
   saveWorkspace();renderCategories();
+  if(id==='append')await refreshAppendList();
   if(id!=='all')await refreshFavorites();
   refreshProjectList();saveWorkspace();
 }
 function renderCategories(){
   const list=document.getElementById('categoryList');list.replaceChildren();
-  const rows=[{id:'all',name:'All assets',count:allProjects.length},{id:'favorites',name:'Favorites',count:Object.keys(workspace.favorites).length},...workspace.categories.map(c=>({...c,count:Object.keys(c.assets).length}))];
+  const rows=[{id:'all',name:'All assets',count:allProjects.length},{id:'favorites',name:'Favorites',count:Object.keys(workspace.favorites).length},{id:'append',name:'Append list',count:Object.keys(appendBookmarks).length},...workspace.categories.map(c=>({...c,count:Object.keys(c.assets).length}))];
   for(const category of rows){
     const row=document.createElement('div');row.className='category-row';
     const button=document.createElement('button');button.type='button';button.className='category-choice';button.dataset.category=category.id;button.setAttribute('aria-pressed',String(activeCategory()===category.id));

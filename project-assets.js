@@ -91,7 +91,10 @@ async function findSkeletonAssetPair(filePath) {
   const dir = path.dirname(filePath), ext = path.extname(filePath).toLowerCase();
   const stem = file => path.basename(file, path.extname(file)).toLowerCase();
   const entries = (await fs.readdir(dir, { withFileTypes: true })).filter(e => e.isFile()).map(e => e.name);
-  const atlases = entries.filter(f => path.extname(f).toLowerCase() === '.atlas');
+  const atlasStem = file => file.replace(/\.atlas(?:\.txt)?$/i, '').toLowerCase();
+  // Unity uses .atlas.txt; prefer the ordinary atlas when both forms exist.
+  const atlases = entries.filter(f => /\.atlas(?:\.txt)?$/i.test(f))
+    .sort((a, b) => Number(/\.txt$/i.test(a)) - Number(/\.txt$/i.test(b)) || a.localeCompare(b));
   const exports = [];
   for (const file of entries) {
     const extension = path.extname(file).toLowerCase();
@@ -100,8 +103,8 @@ async function findSkeletonAssetPair(filePath) {
   // JSON and binary exports with the same stem represent one skeleton choice.
   const singleExport = new Set(exports.map(stem)).size === 1;
   const preferredExport = files => files.find(f => path.extname(f).toLowerCase() === '.skel') || files[0];
-  const atlasFor = skeleton => atlases.find(f => stem(f) === stem(skeleton))
-    || (singleExport && atlases.length === 1 ? atlases[0] : null);
+  const atlasFor = skeleton => atlases.find(f => atlasStem(f) === stem(skeleton))
+    || (singleExport && new Set(atlases.map(atlasStem)).size === 1 ? atlases[0] : null);
   let skeleton = null;
   if (ext === '.skel' || ext === '.json') skeleton = exports.find(f => f.toLowerCase() === path.basename(filePath).toLowerCase());
   else if (ext === '.spine') {
@@ -112,7 +115,7 @@ async function findSkeletonAssetPair(filePath) {
   }
   const atlas = skeleton && atlasFor(skeleton);
   if (!skeleton || !atlas) return { skeletonPath: null, atlasPath: null,
-    reason: 'No unambiguous matching .skel/.json and .atlas pair was found in this folder.' };
+    reason: 'No unambiguous matching .skel/.json and .atlas or .atlas.txt pair was found in this folder.' };
   return { skeletonPath: path.join(dir, skeleton), atlasPath: path.join(dir, atlas) };
 }
 

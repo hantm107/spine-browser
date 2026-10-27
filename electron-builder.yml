@@ -7,7 +7,14 @@ files:
   - main.js
   - preload.js
   - project-assets.js
+  - import-service.js
+  - import-merge.js
+  - import.html
+  - import.css
+  - import-ui.js
+  - import-preview.js
   - asset-groups.js
+  - append-list-store.js
   - category-store.js
   - category-ui.js
   - runtime-catalog.js

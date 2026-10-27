@@ -72,14 +72,62 @@ async function run(){
     await evaluate(`(async()=>{favoritesOnly.checked=false;searchInput.value='';await chooseFolder(${JSON.stringify(folder)});})()`);
     let state;
     for(let i=0;i<100;i++){
-      state=await evaluate('({version:activePlayer?.skeleton?.data.version,time:playbackControls?.currentTime(),note:previewText.textContent})');
+      state=await evaluate('({file:selectedProject?.fullPath,version:activePlayer?.skeleton?.data.version,time:playbackControls?.currentTime(),note:previewText.textContent,finite:activePlayer?.skeleton?.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})');
       if(state.time>0.1)break;await wait(50);
     }
-    assert.equal(state.version,'3.8.75');assert.ok(state.time>0.1);assert.match(state.note,/best-effort/);
-    await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent(0).animation.duration)/2);activePlayer.paused=true');await wait(100);
-    checks.push('Actual user 3.8.75 asset previews from portable executable');
+    const compatibility=await require('../project-assets').detectSpineFileCompatibility(state.file);
+    assert.ok(state.version,JSON.stringify(state));
+    assert.equal(compatibility.mismatch,false);assert.equal(state.version,compatibility.fileVersion);assert.ok(state.time>0.1);assert.equal(state.finite,true);
+    if(state.version==='3.8.75')assert.match(state.note,/best-effort/);
+    await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true');await wait(100);
+    fs.mkdirSync(path.join(root,'.temp'),{recursive:true});
+    fs.writeFileSync(path.join(root,'.temp/user-asset-portable.png'),Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+    checks.push('Actual user asset previews from portable executable');
   }
   fs.mkdirSync(path.join(root,'.temp'),{recursive:true});
+  const appendSourceFile=path.join(root,'tests/fixtures/4.2/spineboy-pro.json');
+  await evaluate(`spineApi.setAppendList(${JSON.stringify(appendSourceFile)},true)`);
+  await evaluate('refreshAppendList()');
+  assert.equal(await evaluate('Object.keys(appendBookmarks).length'),1);
+  assert.ok(await evaluate('!!document.querySelector("[data-category=append]")'));
+  checks.push('Packaged library persists an independent Append list category');
+  await evaluate('window.spineApi.openImportWorkspace()');
+  let importPage;
+  for(let i=0;i<100;i++){importPage=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(p=>p.url.endsWith('/import.html'));if(importPage)break;await wait(50);}
+  assert.ok(importPage,'Packaged Import workspace opens');
+  const importSocket=new WebSocket(importPage.webSocketDebuggerUrl);await new Promise((resolve,reject)=>{importSocket.onopen=resolve;importSocket.onerror=reject;});
+  const importPending=new Map();let importId=0;
+  importSocket.onmessage=event=>{const message=JSON.parse(event.data),entry=importPending.get(message.id);if(entry){importPending.delete(message.id);message.error?entry.reject(Error(JSON.stringify(message.error))):entry.resolve(message.result);}};
+  importSocket.onclose=()=>{for(const entry of importPending.values())entry.reject(Error('Import workspace closed'));importPending.clear();};
+  const importSend=(method,params={})=>new Promise((resolve,reject)=>{const id=++importId;importPending.set(id,{resolve,reject});importSocket.send(JSON.stringify({id,method,params}));});
+  const importEvaluate=async expression=>{const r=await importSend('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+  for(let i=0;i<100;i++){if(await importEvaluate('typeof importWorkspace==="object"'))break;await wait(30);}
+  assert.equal(await importEvaluate('document.querySelectorAll(".project-grid .project").length'),2);
+  assert.equal(await importEvaluate('typeof spineImport.plan'),'function');
+  checks.push('Packaged side-by-side Import workspace and preload load');
+  for(let i=0;i<100;i++){if(await importEvaluate('document.getElementById("appendSource").options.length>1'))break;await wait(30);}
+  assert.equal(await importEvaluate('document.getElementById("appendSource").options.length'),2);
+  await evaluate(`spineApi.setAppendList(${JSON.stringify(path.join(root,'tests/fixtures/3.8/spineboy-pro.json'))},true)`);
+  for(let i=0;i<100;i++){if(await importEvaluate('document.getElementById("appendSource").options.length===3'))break;await wait(30);}
+  assert.equal(await importEvaluate('document.getElementById("appendSource").options.length'),3);
+  checks.push('Packaged Import picker shares Append list sources and receives live updates');
+  const importOptions=await importEvaluate('({prefix:document.getElementById("importPrefix").value,folderRequired:document.getElementById("imageFolder").required,folderDisabled:document.getElementById("imageFolder").disabled,createSkins:document.getElementById("createSkins").checked})');
+  assert.equal(importOptions.prefix,'ImportedMain');assert.equal(importOptions.folderRequired,true);assert.equal(importOptions.folderDisabled,false);assert.equal(importOptions.createSkins,true);
+  checks.push('Packaged importer includes custom prefix, image subfolder and new-skins controls');
+  assert.equal(await importEvaluate('document.getElementById("appendToMain").checked'),true);
+  await importEvaluate('document.getElementById("appendToMain").checked=true;document.getElementById("appendToMain").dispatchEvent(new Event("input"))');
+  assert.equal(await importEvaluate('document.getElementById("save").textContent'),'Save into Main folder');
+  checks.push('Packaged importer offers saving the new project directly into Main');
+  const missingImages=await importEvaluate(`spineImport.inspect(${JSON.stringify(path.join(root,'tests/fixtures/4.2'))}).then(()=>null,error=>error.message)`);
+  assert.match(missingImages,/images folder beside/);checks.push('Packaged import service validates the required project structure');
+  if(process.env.SPINE_IMPORT_MAIN_PROJECT){
+    const project=await importEvaluate(`spineImport.inspect(${JSON.stringify(process.env.SPINE_IMPORT_MAIN_PROJECT)})`);
+    assert.ok(project.id);assert.ok(project.skeletons.length>0);checks.push('Packaged importer inspects a real native project through installed Spine');
+  }
+  await importSend('Page.bringToFront');await importSend('Emulation.setFocusEmulationEnabled',{enabled:true});
+  const importCapture=await importSend('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'.temp/packaged-import-workspace.png'),Buffer.from(importCapture.data,'base64'));
+  await importEvaluate('setTimeout(()=>window.close(),0)').catch(()=>{});importSocket.close();
+  await send('Page.bringToFront');
   const capture=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'.temp/packaged-preview.png'),Buffer.from(capture.data,'base64'));
   fs.writeFileSync(path.join(root,'.temp/packaged-verification.json'),JSON.stringify({checks,failures:[]},null,2));
   await send('Runtime.evaluate',{expression:'window.close()'}).catch(()=>{});

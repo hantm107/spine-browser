@@ -403,3 +403,4 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   .library-header button {font-size:11px;padding:8px;}
   .browser-controls .summary {grid-column:1/-1;text-align:left;}
 }
+.append-list-button,.use-append-source{font-size:10px;padding:3px 5px;background:#253247;color:#c9d8ec;border-radius:4px;white-space:nowrap}.append-list-button[aria-pressed="true"]{background:#174b43;color:#a7f3d0}.use-append-source{background:#2563eb;color:white}

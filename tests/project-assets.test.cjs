@@ -9,6 +9,7 @@ const categories=require('../category-store');
 test('categories support hundreds of distinct RGB colors and validate names',()=>{
   const list=[];
   assert.throws(()=>categories.create(list,'','empty'),/name/);
+  assert.throws(()=>categories.create(list,'Append list','reserved'),/unique/);
   categories.create(list,'Fire','0');assert.throws(()=>categories.create(list,' fire ','duplicate'),/unique/);
   for(let i=1;i<8;i++)categories.create(list,'Category '+i,String(i));
   assert.equal(new Set(list.map(c=>c.color)).size,8);
@@ -131,6 +132,24 @@ test('case-insensitive export and atlas matching preserves actual paths', async 
   const dir = await fixture(t, { 'Hero.SKEL': '', 'hero.ATLAS': '' });
   const pair = await assets.findSkeletonAssetPair(path.join(dir, 'Hero.SKEL'));
   assert.equal(pair.atlasPath, path.join(dir, 'hero.ATLAS'));
+});
+
+test('Unity atlas.txt matches JSON, binary, and editor projects case-insensitively', async t => {
+  const dir = await fixture(t, { 'Hero.JSON': json(), 'Hero.skel': '', 'Hero.spine': '', 'hero.ATLAS.TXT': '' });
+  for (const file of ['Hero.JSON', 'Hero.skel', 'Hero.spine']) {
+    assert.equal((await assets.findSkeletonAssetPair(path.join(dir, file))).atlasPath, path.join(dir, 'hero.ATLAS.TXT'));
+  }
+  await fs.writeFile(path.join(dir, 'hero.atlas'), '');
+  assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'Hero.JSON'))).atlasPath, path.join(dir, 'hero.atlas'));
+});
+
+test('Unity atlas fallback preserves ambiguity checks and ignores ordinary text files', async t => {
+  const dir = await fixture(t, { 'hero.json': json(), 'textures.atlas.txt': '', 'notes.txt': '' });
+  assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'hero.json'))).atlasPath, path.join(dir, 'textures.atlas.txt'));
+  await fs.writeFile(path.join(dir, 'textures.atlas'), '');
+  assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'hero.json'))).atlasPath, path.join(dir, 'textures.atlas'));
+  await fs.writeFile(path.join(dir, 'other.atlas.txt'), '');
+  assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'hero.json'))).skeletonPath, null);
 });
 
 test('continues past unreadable subfolders and rejects an unreadable root', async t => {

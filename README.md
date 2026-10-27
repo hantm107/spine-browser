@@ -2,6 +2,42 @@
 
 A local Electron browser for Spine editor projects and exported animations.
 
+## Append list
+
+Use **Append +** on a library item to save it as an import source. **Append list** is a built-in global collection beside Favorites, independent of the active folder and custom categories. It keeps absolute file paths across restarts. **In Append** removes the bookmark while preserving the source files.
+
+In the import workspace, choose a saved project under **From Append list** and click **Use as Import**. Main stays open and no folder picker is needed. You can also click **Import animation** on an entry in the library's Append list to open it directly as Import. **Add current source to list** saves a project already open in the Import pane, including a working project reconstructed from exports.
+
+The library and import workspace share updates immediately. Missing files stay listed as unavailable; sources missing the required `images/` folder cannot be used until that folder is present. **Refresh list** rechecks availability. Saving an export still follows the existing working-project reconstruction flow when its folder has no `.spine` project.
+
+## Import one animation into another project
+
+Open **Import → Import animation…** from the app menu, or select **Import animation** in the library. The separate workspace shows Main and Import side by side, with skeleton, animation, and skin selectors and independent playback timelines.
+
+Each input must have a `.spine` file and an `images/` folder beside it, in separate project folders. Choose the intended `.spine` file if a folder contains several. When only a skeleton JSON or binary export is available, **Create working .spine copy** reconstructs a project and copies its images into the app's import workspace. Original files stay unchanged. An installed, activated Spine editor is required for this feature; configure its command-line executable under **Spine installation**. Ordinary library previews still work without the editor.
+
+The importer reads fresh JSON from the saved projects, with nonessential data enabled. Main must use the same Spine version or a later version than Import. Earlier projects are converted by the Main editor in a working copy; version strings are never changed to bypass format compatibility. The matching editor versions must be available through the Spine launcher.
+
+Select one source animation, then **Review import**. The dependency pass retains the animation's keys, setup-visible attachments, ancestor and weighted-mesh bones, linked meshes, clipping and path dependencies, constraints, events, and referenced images. Other source animations and their unused assets are excluded. With new skins enabled, imported artwork belongs to the new prefixed skins, including a skin for source-default artwork. The combined preview selects the matching imported skin automatically.
+
+Set **Import prefix** to name the imported parent group and new assets; it defaults to `ImportedMain`. The parent is created directly under Main's root at X = 1000, and later imports add a number (`ImportedMain2`, `ImportedMain3`, and so on). Bones, slots, attachments, skins, constraints, and events receive consistent names. Use **Find / Replace** or edit individual bone and attachment results; review again after each change.
+
+**Images subfolder** is required. Enter a name such as `Effects/Impact` to store the new images under Main's `images/Effects/Impact/`. Every import uses a fresh subfolder: an existing name becomes `Effects/Impact-2`, then `Effects/Impact-3`, and the review shows the exact destination. The initial folder name follows the import prefix until you edit it. Attachment display names match the copied image filenames without the extension, and their image paths include the selected subfolder. Image sequences retain their numbered-frame naming. Existing Main images keep their paths. Blank or invalid folder names and missing required files stop the import.
+
+**Create new skins for imported attachments** is enabled by default and appends the prefixed source skins. Select the indicated imported skin in Spine to display its artwork; the combined preview does this automatically. Turn this option off to use the **Import preview skin** selection, including its default-skin fallbacks, and add its required attachments to Main's default attachments without creating named skins. Linked meshes, deformation keys, skin-required bones, and constraints are retained for the selected variant. Review again after changing these options or the selected Import skin.
+
+**Preview merge** plays the new animation alongside Main's setup pose. **Save into Main folder** is the default: it creates a new `.spine` file beside Main and puts the new images in the reviewed subfolder. No output-folder picker is needed. Main's existing animations and other skeletons are retained; the new animation contains only remapped Import timelines. Use **Use result as Main** to perform another import.
+
+**Save the new project beside Main** starts enabled. The app creates a file such as `Main-ImportedMain.spine` and an accompanying import report. Existing project files and assets are preserved, and an existing output project name receives a numeric suffix. The project is first saved and re-exported in a working folder to verify every attachment selection key and imported setup attachment. A changed or nullified selection stops the save before Main is updated. If the reviewed image subfolder is created by another process before saving, review again to choose a fresh name.
+
+Uncheck **Save the new project beside Main** to create a separate output folder instead. That mode asks for a location outside the source folders and includes `Merged.spine`, the original Main images, the new image subfolder, and the import data and report. The mandatory image subfolder rule also applies to this mode.
+
+The new `.spine` project is rebuilt through Spine's official export/import workflow. Editor-only state that is absent from exports cannot be preserved. Existing missing images in unselected Main skeletons are reported in the review and import report; missing images needed by the selected skeleton or animation block saving. Audio referenced by events is copied from each project's `audio/` folder when used. Ambiguous or unsupported data fails with an explanation instead of dropping keys.
+
+## Browse and preview
+
+Preview discovery accepts both `.atlas` and Unity `.atlas.txt` files, including uppercase extensions and multiple texture pages. When both atlas forms have the same name, `.atlas` takes priority. Source exports do not need to be renamed.
+
 Use Left/Right to browse adjacent files and Up/Down to move between visual rows in the library. Highlighting updates immediately; the preview loads after 200 ms without another arrow press, so holding a key skips intermediate loads. Navigation follows the current search/category filters and scrolls the highlighted card into view. Arrow keys retain their usual behavior in text fields and controls. Click the animation canvas to pause/resume, or drag left/right to scrub the animation while paused. The selected asset has a bright green outline.
 
 Preview blending supports Normal, Additive, Multiply, and Screen with straight-alpha and premultiplied atlas textures. Textures are normalized to premultiplied alpha in GPU memory per atlas page (`pma: true` pages are not multiplied twice). Older Screen blending uses the corrected destination-color factor. The source atlas, textures, and skeleton blend settings are never rewritten.
@@ -17,7 +53,7 @@ npm install
 npm start
 ```
 
-To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.3.1-portable.exe`; users can run that single file without installing Node.js or Spine. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
+To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.4.6-portable.exe`; users can run that single file without installing Node.js. Browsing exports works without Spine; native project importing requires an installed, activated Spine editor. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
 
 `node tests/packaged-smoke.cjs` launches the generated executable with a temporary user profile and checks JSON and binary playback using the checked-in fixtures. It saves results and a screenshot under `.temp/`.
 
@@ -44,6 +80,8 @@ For playback, place a `.skel` or skeleton `.json` beside an atlas with the same 
 The original project and export files are never overwritten. The 3.0-3.5 binary formats are decoded in memory. Versions 3.0-3.4 use the shared 3.4 renderer; 3.5 uses the 3.6 renderer with its own binary layout. Earlier mesh and constraint names are normalized without changing source files. Version routing covers every released 3.x minor series; individual experimental beta layouts are not guaranteed. The 4.2 player is pinned to 4.2.120, the latest published 4.2 package verified during this update. The bundled legacy runtime's source and license are documented in [vendor/README.md](vendor/README.md).
 
 Run `npm test` for asset-resolution/version/scanning regression tests and actual Electron playback/UI checks. The Electron tests briefly show a test window to verify animation advances, then close it. Verification results and a sample screenshot are saved in `.temp/`.
+
+Native-editor attachment regression checks are available with `npm run test:import-native`. Set `SPINE_NATIVE_IMPORT_CLI` to the installed Spine command-line executable and `SPINE_NATIVE_IMPORT_VERSION` to an installed editor version (defaults to 4.2.43). These checks require activation and exercise real save/reopen behavior; ordinary tests do not launch Spine.
 
 Spine 3.8.75 JSON and binary exports receive best-effort preview support. The upstream runtime rejects this editor version because of known export bugs (https://github.com/EsotericSoftware/spine-runtimes/issues/2428). The version guards are relaxed while the standard data readers remain unchanged. Original version metadata is preserved and source files are never rewritten. Verified locally with lrsc502/lrsc532 JSON and the 233/228 binary exports; damaged files may still require re-exporting. Default playback skips zero-duration placeholders when animated clips are available.
 

@@ -16,7 +16,7 @@
     name=String(name||'').trim();
     if(!name)throw Error('Enter a category name.');
     if(name.length>40)throw Error('Use 40 characters or fewer.');
-    if(['all assets','favorites'].includes(name.toLowerCase()) || categories.some(c=>c.id!==except&&c.name.toLowerCase()===name.toLowerCase()))throw Error('Choose a unique category name.');
+    if(['all assets','favorites','append list'].includes(name.toLowerCase()) || categories.some(c=>c.id!==except&&c.name.toLowerCase()===name.toLowerCase()))throw Error('Choose a unique category name.');
     return name;
   }
   function create(categories,name,id){

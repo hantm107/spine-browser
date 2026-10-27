@@ -7,6 +7,19 @@ const { pathToFileURL } = require('node:url');
 const { createHash } = require('node:crypto');
 const { groupAssets } = require('./asset-groups');
 const { scanDirectory, findSkeletonAssetPair, detectSpineFileCompatibility } = require('./project-assets');
+const {createImportService} = require('./import-service');
+const {randomUUID} = require('node:crypto');
+const {createAppendListStore}=require('./append-list-store');
+let importWindow, importService, appendList, pendingAppendSource=null;
+
+function openImportWindow(source) {
+  if(typeof source==='string')pendingAppendSource=source;
+  if(importWindow && !importWindow.isDestroyed()) { importWindow.focus();if(pendingAppendSource)importWindow.webContents.send('import-append-source-ready');return; }
+  importWindow = new BrowserWindow({title:'Animation Import — Spine Browser',width:1480,height:960,minWidth:1100,minHeight:740,
+    webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false}});
+  importWindow.loadFile(path.join(__dirname,'import.html'));
+  importWindow.on('closed',()=>{importWindow=null;pendingAppendSource=null;});
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -20,6 +33,7 @@ function createMenu() {
   const menu = Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'fileMenu' },
+    { label:'Import', submenu:[{label:'Import animation…',click:openImportWindow}] },
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
@@ -51,6 +65,43 @@ async function openInSpine(filePath) {
 }
 
 app.whenReady().then(() => {
+  appendList=createAppendListStore(path.join(app.getPath('userData'),'append-list.json'));
+  importService=createImportService({root:path.join(app.getPath('userData'),'import-workspace',randomUUID()),onProgress:message=>{
+    if(importWindow&&!importWindow.isDestroyed())importWindow.webContents.send('import-progress',message);
+  }});
+  ipcMain.handle('append-list-get',()=>appendList.list());
+  ipcMain.handle('append-list-set',async(_event,file,enabled)=>{
+    const records=await appendList.set(file,enabled===true);
+    for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed())window.webContents.send('append-list-changed');
+    return records;
+  });
+  ipcMain.handle('open-import-workspace',async(_event,file)=>{
+    if(file){const entry=await appendList.find(file);if(!entry||entry.unavailable)throw Error('This Append list source is unavailable.');openImportWindow(entry.fullPath);}
+    else openImportWindow();
+  });
+  const importOnly=(fn)=>(event,...args)=>{
+    if(event.sender.getURL()!==pathToFileURL(path.join(__dirname,'import.html')).href)throw Error('Open the Import workspace first.');
+    return fn(...args);
+  };
+  ipcMain.handle('import-take-append-source',importOnly(()=>{const file=pendingAppendSource;pendingAppendSource=null;return file;}));
+  ipcMain.handle('import-select-project',importOnly(async()=>{
+    const r=await dialog.showOpenDialog(importWindow,{title:'Choose a project folder containing a .spine file and images',properties:['openDirectory']});
+    return r.canceled?null:r.filePaths[0];
+  }));
+  ipcMain.handle('import-select-cli',importOnly(async()=>{
+    const r=await dialog.showOpenDialog(importWindow,{title:'Choose the installed Spine command-line executable',filters:[{name:'Spine CLI',extensions:['com','exe']}],properties:['openFile']});
+    return r.canceled?null:r.filePaths[0];
+  }));
+  ipcMain.handle('import-inspect',importOnly((...args)=>importService.inspect(...args)));
+  ipcMain.handle('import-reconstruct',importOnly((...args)=>importService.reconstruct(...args)));
+  ipcMain.handle('import-preview',importOnly((...args)=>importService.preview(...args)));
+  ipcMain.handle('import-plan',importOnly((...args)=>importService.plan(...args)));
+  ipcMain.handle('import-preview-plan',importOnly((...args)=>importService.previewPlan(...args)));
+  ipcMain.handle('import-save',importOnly(async planId=>{
+    if(importService.appendsToMain(planId))return importService.execute(planId);
+    const r=await dialog.showOpenDialog(importWindow,{title:'Choose a parent folder for the new merged project',properties:['openDirectory','createDirectory']});
+    return r.canceled?null:importService.execute(planId,r.filePaths[0]);
+  }));
   ipcMain.handle('select-folder', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     return result.canceled ? null : result.filePaths[0] || null;
@@ -90,9 +141,9 @@ app.whenReady().then(() => {
   ipcMain.handle('read-data-uri', async (_, filePath) => {
     let buffer = await fs.readFile(filePath);
     // Players parse JSON from these data URIs; normalize a UTF-8 BOM in memory only.
-    if (['.json', '.atlas'].includes(path.extname(filePath).toLowerCase())
+    if ((['.json', '.atlas'].includes(path.extname(filePath).toLowerCase()) || /\.atlas\.txt$/i.test(filePath))
       && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) buffer = buffer.subarray(3);
-    const mime = { '.json': 'application/json', '.atlas': 'text/plain', '.png': 'image/png',
+    const mime = /\.atlas\.txt$/i.test(filePath) ? 'text/plain' : { '.json': 'application/json', '.atlas': 'text/plain', '.png': 'image/png',
       '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' }[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
     return `data:${mime};base64,${buffer.toString('base64')}`;
   });
