@@ -320,10 +320,11 @@ async function setupPreview(project) {
       playbackControls?.dispose();
       const displayVersion = version.inferredLegacy ? '2.x (unversioned JSON; 2.1 compatibility)' : version.fileVersion;
       const exportNote = version.fileVersion === '3.8.75' ? ' · Legacy export: best-effort preview' : '';
-      playbackControls=window.attachPlaybackControls(player,project,workspace,saveWorkspace,chosen=>assignPreviewText(project.name,'Playing: '+chosen+' - Spine '+displayVersion+exportNote));
+      const fallbackNote=assets.fallbackReason?' · '+assets.fallbackReason:'';
+      playbackControls=window.attachPlaybackControls(player,project,workspace,saveWorkspace,chosen=>assignPreviewText(project.name,'Playing: '+chosen+' - Spine '+displayVersion+exportNote+fallbackNote));
       animation=(player.animationState.getCurrent?.(0)||player.animationState.getTrack?.(0))?.animation.name || animation;
       scheduleThumbnail(project,player,current);
-      assignPreviewText(project.name, (animation ? `Playing: ${animation} · Spine ${displayVersion}` : `Preview loaded · Spine ${displayVersion} · No animations`)+exportNote);
+      assignPreviewText(project.name, (animation ? `Playing: ${animation} · Spine ${displayVersion}` : `Preview loaded · Spine ${displayVersion} · No animations`)+exportNote+fallbackNote);
     };
     const error = (_player, message) => {
       // Runtime callbacks can occur within their render loop; clean up after that stack returns.

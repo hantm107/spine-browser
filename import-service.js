@@ -5,6 +5,8 @@ const os = require('node:os');
 const {spawn, execFile} = require('node:child_process');
 const {randomUUID, createHash} = require('node:crypto');
 const {buildMerge, compareVersions, imagePaths, skinsOf, safeName,validateImageFolder,verifySavedAttachmentKeys} = require('./import-merge');
+const {decode:decodeLegacy}=require('./old-spine-decoder');
+const {binaryHeaderVersion}=require('./project-assets');
 
 const exportSettings = {class:'export-json',extension:'.json',format:'JSON',prettyPrint:true,nonessential:true,cleanUp:false,packAtlas:null,packSource:'attachments',packTarget:'single',warnings:true,version:null,all:true,output:'',id:-1,input:'',open:false};
 const packSettings = {rotation:false,stripWhitespaceX:false,stripWhitespaceY:false,combineSubdirectories:true,flattenPaths:false,useIndexes:false,premultiplyAlpha:false,maxWidth:4096,maxHeight:4096,paddingX:2,paddingY:2,duplicatePadding:true,filterMin:'Linear',filterMag:'Linear'};
@@ -53,8 +55,8 @@ function runSpine(cli, args, timeout = 120000) {
     });
   });
 }
-async function normalizeExport(file, output, images) {
-  const data = await readJson(file), repairs=[];
+async function normalizeExport(file, output, images, decoded) {
+  const data = decoded||await readJson(file), repairs=[];
   // Legacy converter JSON uses the old unweighted bounding-box shape. This is
   // an explicit structural repair, not a change to its declared Spine version.
   for (const skin of skinsOf(data)) for (const values of Object.values(skin.attachments || {})) for (const attachment of Object.values(values)) {
@@ -62,8 +64,34 @@ async function normalizeExport(file, output, images) {
       attachment.vertexCount=attachment.vertices.length/2; repairs.push('Restored a legacy bounding-box vertex count.');
     }
   }
+  // The 2.x preview treats an omitted attachment name as hidden. The 3.8
+  // legacy importer requires an explicit null for that same hide key.
+  if(/^2\./.test(data.skeleton?.spine||''))for(const animation of Object.values(data.animations||{}))for(const slot of Object.values(animation.slots||{}))for(const key of slot.attachment||[])if(!Object.prototype.hasOwnProperty.call(key,'name')){key.name=null;repairs.push('Made a legacy attachment hide key explicit.');}
   data.skeleton ||= {}; data.skeleton.images = images.replace(/\\/g,'/') + '/';
   await fs.writeFile(output,JSON.stringify(data)); return {data,repairs};
+}
+async function recoveryInput(file){
+  if(/\.json$/i.test(file)){
+    const data=await readJson(file);
+    if(!Array.isArray(data.bones))throw Error('The JSON export has no skeleton bones.');
+    const version=data.skeleton?.spine||((Array.isArray(data.slots)&&data.skins&&!Array.isArray(data.skins)&&data.animations)?'2.1':null);
+    return {file,data,version,notes:[]};
+  }
+  const bytes=await fs.readFile(file),version=binaryHeaderVersion(bytes);
+  if(!version){
+    const dir=path.dirname(file),stem=path.basename(file,path.extname(file)).toLowerCase();
+    const sibling=(await fs.readdir(dir)).find(name=>/\.json$/i.test(name)&&path.basename(name,path.extname(name)).toLowerCase()===stem);
+    if(sibling){const result=await recoveryInput(path.join(dir,sibling));return {...result,notes:[`The binary has a custom or unknown version header. Recovered from its matching JSON: ${sibling}.`,...result.notes]};}
+    throw Error('This binary has a custom or unknown Spine version header. Choose a matching JSON export to create a working copy.');
+  }
+  const series=version.match(/^\d+\.\d+/)[0];
+  return {file,version,data:Number(series)<3.6?decodeLegacy(bytes,series):null,notes:[]};
+}
+function recoveryEditorVersion(version,installed=[]){
+  if(!/^\d+\.\d+(?:\.\d+)?(?:-beta)?$/.test(version||''))throw Error('The export has no identifiable Spine version.');
+  if(compareVersions(version,'3.6.0')<0)return installed.filter(v=>/^3\.8\.\d+$/.test(v)).sort(compareVersions).at(-1)||'3.8.99';
+  if(version.split('.').length===2)return installed.filter(v=>new RegExp('^'+version.replace('.','\\.')+'\\.\\d+$').test(v)).sort(compareVersions).at(-1)||version+'.xx';
+  return version;
 }
 async function freshImageSubfolder(images,requested){
   requested=validateImageFolder(requested);
@@ -127,7 +155,7 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
     return `${stat.size}:${stat.mtimeMs}`;
   }
   const get = id => { const s=sessions.get(id); if(!s)throw Error('Reopen the project; its import session has expired.'); return s; };
-  async function inspect(project, settings={}) {
+  async function inspect(project, settings={}, savedVersion=null) {
     if (typeof project!=='string' || !path.isAbsolute(project)) throw Error('Choose an absolute project path.');
     const folder=(await fs.stat(project)).isDirectory()?project:path.dirname(project);
     const images=await validateImagesRoot(folder);
@@ -138,8 +166,8 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
     }
     const cli=settings.cliPath||cliPath;
     progress('Inspecting the saved Spine project…');
-    const info=await runSpine(cli,[...(settings.editorVersion?['-u',settings.editorVersion]:[]),'-i',project]);
-    const version=info.match(/Spine version:\s*([\d.]+)/)?.[1];
+    const info=savedVersion?'':await runSpine(cli,[...(settings.editorVersion?['-u',settings.editorVersion]:[]),'-i',project]);
+    const version=savedVersion||info.match(/Spine version:\s*([\d.]+)/)?.[1];
     if(!version)throw Error('Spine did not report a saved project version.');
     const id=randomUUID(), dir=path.join(root,id), exported=path.join(dir,'original');
     await fs.mkdir(exported,{recursive:true});
@@ -157,25 +185,21 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
   }
   async function reconstruct(file, settings={}) {
     if(!path.isAbsolute(file)||!/\.(json|skel)$/i.test(file))throw Error('Choose a JSON or binary skeleton export.');
+    const recovered=await recoveryInput(file),installed=await fs.readdir(path.join(os.homedir(),'Spine','updates')).catch(()=>[]);
+    const version=recoveryEditorVersion(recovered.version,installed);
     const images=await validateImagesRoot(path.dirname(file)), dir=path.join(root,'recovered-'+randomUUID());
     await fs.mkdir(dir,{recursive:true}); await fs.cp(images,path.join(dir,'images'),{recursive:true,errorOnExist:true,force:false});
-    let version, input=file, repairs=[];
-    if(/\.json$/i.test(file)) {
-      input=path.join(dir,'recovered-input.json'); const normalized=await normalizeExport(file,input,path.join(dir,'images'));
-      version=normalized.data.skeleton.spine; repairs=normalized.repairs;
-    } else { const b=await fs.readFile(file); version=b.subarray(0,512).toString('latin1').match(/\d+\.\d+(?:\.\d+)?/)?.[0]; }
-    if(!version)throw Error('The export has no identifiable Spine version.');
-    // Export metadata may only contain major.minor. Select an installed patch
-    // in that series; never replace the JSON version to bypass conversion.
-    if(version.split('.').length===2) {
-      const installed=await fs.readdir(path.join(os.homedir(),'Spine','updates')).catch(()=>[]);
-      version=installed.filter(v=>v.startsWith(version+'.')).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).at(-1)||version+'.xx';
-    }
+    let input=recovered.file,repairs=[...recovered.notes];
+    if(recovered.data){input=path.join(dir,'recovered-input.json');const normalized=await normalizeExport(recovered.file,input,path.join(dir,'images'),recovered.data);repairs.push(...normalized.repairs);}
+    if(compareVersions(recovered.version,'3.6.0')<0)repairs.push(`Legacy ${recovered.version} data reconstructed through Spine ${version}; no 2.x editor is launched.`);
     const project=path.join(dir,safeName(path.basename(file,path.extname(file)))+'.spine');
-    progress('Reconstructing a working project from its export…');
+    progress(`Reconstructing a working project with Spine ${version}…`);
     await runSpine(settings.cliPath||cliPath,['-u',version,'-i',input,'-o',project,'-r',path.basename(project,'.spine')]);
+    if(!await exists(project))throw Error('Spine did not create the working project. Check that the selected editor supports command-line import.');
     await fs.writeFile(path.join(dir,'RECOVERY.txt'),'Reconstructed from '+file+'\nThe original files were not changed. Exported data may omit editor-only information.\n'+repairs.join('\n'));
-    return inspect(project,settings);
+    // Older editors open their GUI for an input-only invocation. We know the
+    // version just used to save this project, so inspect it by exporting directly.
+    const result=await inspect(project,settings,version);result.warnings.push(...repairs);return result;
   }
   async function converted(session, version) {
     if(compareVersions(session.version,version)>0)throw Error(`Import ${session.version} is newer than Main ${version}. Downgrading is not supported.`);
@@ -310,4 +334,4 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
 }
 const cloneOptions = o => structuredClone(o);
 const ownAnimation=(data,name)=>Object.prototype.hasOwnProperty.call(data.animations||{},name);
-module.exports={createImportService,runSpine,normalizeExport,imageFile,resource,exportSettings,packSettings,publishToMainFolder,freshImageSubfolder};
+module.exports={createImportService,runSpine,normalizeExport,imageFile,resource,exportSettings,packSettings,publishToMainFolder,freshImageSubfolder,binaryHeaderVersion,recoveryInput,recoveryEditorVersion};

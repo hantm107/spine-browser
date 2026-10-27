@@ -4,6 +4,27 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {createImportService,runSpine}=require('../import-service');
 const cli=process.env.SPINE_NATIVE_IMPORT_CLI,version=process.env.SPINE_NATIVE_IMPORT_VERSION||'4.2.43';
+
+test('legacy JSON and custom-header binary recovery bridge into a modern Main project',{skip:!cli,timeout:180000},async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-legacy-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:150}));
+  const source=path.join(root,'legacy'),main=path.join(root,'main');
+  for(const folder of [source,main])await fs.mkdir(path.join(folder,'images'),{recursive:true});
+  await fs.copyFile(path.join(__dirname,'fixtures/4.2/spineboy.png'),path.join(source,'images','art.png'));
+  const old={skeleton:{spine:'2.1.27'},bones:[{name:'root'}],slots:[{name:'art',bone:'root',attachment:'art'}],skins:{default:{art:{art:{width:16,height:16}}}},animations:{flash:{slots:{art:{attachment:[{name:'art'},{time:.1},{time:.2,name:'art'},{time:.3,name:'art'}]}}}}};
+  const json=JSON.stringify(old),file=path.join(source,'effect.json'),binary=path.join(source,'effect.skel'),header='HuaHua2.0';
+  await fs.writeFile(file,json);await fs.writeFile(binary,Buffer.concat([Buffer.from([1,Buffer.byteLength(header)+1]),Buffer.from(header)]));
+  const service=createImportService({root:path.join(root,'cache'),cliPath:cli});
+  const recovered=await service.reconstruct(file,{editorVersion:version});assert.match(recovered.version,/^3\.8\./);assert.deepEqual(recovered.skeletons[0].animations,['flash']);
+  const fallback=await service.reconstruct(binary,{editorVersion:version});assert.match(fallback.warnings.join(' '),/matching JSON/);
+  assert.equal(await fs.readFile(file,'utf8'),json);
+  const mainJson=path.join(main,'main.json'),mainProject=path.join(main,'main.spine');
+  await fs.writeFile(mainJson,JSON.stringify({skeleton:{spine:version,images:'./images/'},bones:[{name:'root'}],animations:{idle:{}}}));
+  await runSpine(cli,['-u',version,'-i',mainJson,'-o',mainProject,'-r','main']);
+  const m=await service.inspect(mainProject,{editorVersion:version});
+  const plan=await service.plan({mainId:m.id,importId:recovered.id,mainSkeleton:'main',importSkeleton:recovered.skeletons[0].name,animation:'flash',prefix:'Legacy',imageFolder:'Legacy',createSkins:false,appendToMain:false});
+  const output=await service.execute(plan.id,root),report=JSON.parse(await fs.readFile(path.join(output.folder,'import-report.json'),'utf8'));
+  assert.equal(report.attachmentVerification.totalKeys,4);assert.equal(report.attachmentVerification.namedKeys,3);
+});
 test('native save preserves attachment selections in both skin modes',{skip:!cli,timeout:180000},async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-native-import-'));
   assert.ok(path.relative(os.tmpdir(),root).startsWith('spine-native-import-'));

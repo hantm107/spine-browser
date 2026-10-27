@@ -103,13 +103,24 @@ test('JSON-only exports can use a sole differently named atlas without guessing 
 });
 
 test('numbered projects resolve one skeleton exported as both JSON and binary', async t => {
-  const dir = await fixture(t, { '001.spine': '', 'hero.json': json(), 'hero.skel': '', 'textures.atlas': '' });
+  const dir = await fixture(t, { '001.spine': '', 'hero.json': json(), 'hero.skel': await fs.readFile(path.join(__dirname,'fixtures/3.8/spineboy-pro.skel')), 'textures.atlas': '' });
   const pair = await assets.findSkeletonAssetPair(path.join(dir, '001.spine'));
   assert.equal(pair.skeletonPath, path.join(dir, 'hero.skel'));
   assert.equal(pair.atlasPath, path.join(dir, 'textures.atlas'));
   assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'hero.json'))).skeletonPath, path.join(dir, 'hero.json'));
   await fs.unlink(path.join(dir, 'hero.skel'));
   assert.equal((await assets.findSkeletonAssetPair(path.join(dir, '001.spine'))).skeletonPath, path.join(dir, 'hero.json'));
+});
+
+test('custom binaries fall back to supported same-stem JSON for project and binary previews',async t=>{
+  const header='HuaHua2.0',binary=Buffer.concat([Buffer.from([1,header.length+1]),Buffer.from(header),Buffer.from(' bone-name-4.2.43')]);
+  const dir=await fixture(t,{'effect.spine':'','effect.skel':binary,'effect.JSON':json('2.1.27'),'effect.atlas':''});
+  assert.equal((await assets.detectSpineFileCompatibility(path.join(dir,'effect.skel'))).fileVersion,null);
+  for(const file of ['effect.spine','effect.skel']){const pair=await assets.findSkeletonAssetPair(path.join(dir,file));assert.equal(path.basename(pair.skeletonPath),'effect.JSON');assert.match(pair.fallbackReason,/unsupported or unknown binary/);}
+  await fs.writeFile(path.join(dir,'effect.JSON'),json('4.4.1'));
+  assert.equal(path.basename((await assets.findSkeletonAssetPair(path.join(dir,'effect.spine'))).skeletonPath),'effect.skel');
+  await fs.unlink(path.join(dir,'effect.JSON'));await fs.writeFile(path.join(dir,'unrelated.json'),json());
+  assert.equal(path.basename((await assets.findSkeletonAssetPair(path.join(dir,'effect.skel'))).skeletonPath),'effect.skel');
 });
 
 test('an exact JSON export beats an unrelated binary; mismatched atlas is rejected', async t => {

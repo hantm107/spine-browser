@@ -3,7 +3,32 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
-const {resource,imageFile,normalizeExport,publishToMainFolder,freshImageSubfolder}=require('../import-service');
+const {resource,imageFile,normalizeExport,publishToMainFolder,freshImageSubfolder,binaryHeaderVersion,recoveryInput,recoveryEditorVersion}=require('../import-service');
+
+test('legacy recovery uses the preview decoder and a supported editor without changing source metadata',async()=>{
+  for(const series of ['2.0','2.1']){
+    const file=path.join(__dirname,'fixtures',series,'spineboy-pro.skel'),bytes=await fs.readFile(file),input=await recoveryInput(file);
+    assert.match(binaryHeaderVersion(bytes),new RegExp('^'+series.replace('.','\\.')+'\\.'));
+    const json=JSON.parse(await fs.readFile(path.join(__dirname,'fixtures',series,'spineboy-pro.json'),'utf8'));
+    assert.equal(input.data.bones.length,json.bones.length);assert.equal(input.data.skeleton.spine,input.version);
+    assert.equal(recoveryEditorVersion(input.version,['2.1.27','3.8.99','4.2.43']),'3.8.99');
+  }
+  assert.equal(recoveryEditorVersion('2.1.27',[]),'3.8.99');
+  assert.equal(recoveryEditorVersion('3.8',['3.8.55','3.8.99']),'3.8.99');
+  assert.equal(recoveryEditorVersion('4.2.43',['3.8.99']),'4.2.43');
+  for(const series of ['3.6','3.8','4.0','4.1','4.2'])assert.match(binaryHeaderVersion(await fs.readFile(path.join(__dirname,'fixtures',series,'spineboy-pro.skel'))),new RegExp('^'+series.replace('.','\\.')+'\\.'));
+  assert.throws(()=>recoveryEditorVersion('HuaHua2.0'),/identifiable/);
+});
+
+test('custom binary headers use matching JSON instead of guessing a version substring',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-custom-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const file=path.join(root,'effect.skel'),header='HuaHua2.0',bytes=Buffer.concat([Buffer.from([1,Buffer.byteLength(header)+1]),Buffer.from(header)]);
+  await fs.writeFile(file,bytes);assert.equal(binaryHeaderVersion(bytes),null);
+  await assert.rejects(recoveryInput(file),/custom or unknown.*matching JSON/);
+  const json=JSON.stringify({skeleton:{spine:'2.1.27'},bones:[{name:'root'}],animations:{born:{}}});await fs.writeFile(path.join(root,'effect.JSON'),json);
+  const input=await recoveryInput(file);assert.equal(input.version,'2.1.27');assert.equal(input.file,path.join(root,'effect.JSON'));assert.match(input.notes.join(' '),/matching JSON/);
+  assert.ok(bytes.equals(await fs.readFile(file)));assert.equal(await fs.readFile(input.file,'utf8'),json);
+});
 test('image paths cannot escape the project or use an absolute path',()=>{
   const base=path.resolve('images');
   for(const name of ['../outside.png','/outside.png','C:\\outside.png','a/../../outside.png'])assert.throws(()=>resource(base,name),/Invalid|escapes/);
@@ -23,6 +48,13 @@ test('legacy bounding box recovery changes only a working copy',async t=>{
   const normalized=await normalizeExport(file,output,path.join(root,'images'));
   assert.equal(normalized.data.skeleton.spine,'3.8');assert.equal(normalized.data.skins[0].attachments.slot.hitbox.vertexCount,4);
   assert.equal(await fs.readFile(file,'utf8'),original);assert.equal(normalized.repairs.length,1);
+});
+
+test('legacy attachment hide keys use explicit null only in the working export',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-hide-key-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const original=JSON.stringify({skeleton:{spine:'2.1.27'},bones:[{name:'root'}],animations:{flash:{slots:{art:{attachment:[{name:'art'},{time:.1}]}}}}});
+  const file=path.join(root,'source.json'),output=path.join(root,'working.json');await fs.writeFile(file,original);
+  const {data}=await normalizeExport(file,output,path.join(root,'images'));assert.equal(data.animations.flash.slots.art.attachment[1].name,null);assert.equal(await fs.readFile(file,'utf8'),original);
 });
 async function appendFixture(t){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));

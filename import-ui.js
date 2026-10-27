@@ -9,9 +9,11 @@
     $(role+'Preview').before(label);select.onchange=()=>{views[role].skin(select.value);if(role==='import'){state.overrides={};invalidate();}optionHints();};
     const timeline=document.createElement('input');timeline.type='range';timeline.id=role+'Timeline';timeline.min=0;timeline.max=0;timeline.step='0.001';timeline.setAttribute('aria-label',role+' animation timeline');timeline.className='preview-timeline';timeline.disabled=true;
     $(role+'Preview').after(timeline);timeline.oninput=()=>views[role].seek(Number(timeline.value));
+    const autoLabel=document.createElement('label'),auto=document.createElement('input');auto.type='checkbox';auto.checked=true;auto.id=role+'AutoFit';autoLabel.className='preview-auto-fit';autoLabel.append(auto,'Auto fit');auto.onchange=()=>views[role].autoFit(auto.checked);
+    const fit=document.createElement('button');fit.textContent='Fit animation';fit.id=role+'Fit';fit.onclick=()=>{auto.checked=false;views[role].fit();};$(role+'Play').after(fit,autoLabel);
   }
   let frame;
-  function tick(){for(const role of ['main','import','combined']){const value=views[role].inspect(),duration=views[role].duration(),timeline=$(role+'Timeline');timeline.disabled=!duration;timeline.max=duration;if(value&&duration)timeline.value=(value.time||0)%duration;}frame=requestAnimationFrame(tick);}tick();
+  function tick(){for(const role of ['main','import','combined']){views[role].updateFrame();const value=views[role].inspect(),duration=views[role].duration(),timeline=$(role+'Timeline');$(role+'Fit').disabled=!value?.bones;timeline.disabled=!duration;timeline.max=duration;if(value&&duration)timeline.value=(value.time||0)%duration;}frame=requestAnimationFrame(tick);}tick();
   let revision=0;
   const settings=()=>({cliPath:$('cliPath').value.trim(),editorVersion:$('editorVersion').value.trim()});
   try{const saved=JSON.parse(localStorage.getItem('spineImportSettings')||'null');if(saved){$('cliPath').value=saved.cliPath;$('editorVersion').value=saved.editorVersion||'';}}catch{}

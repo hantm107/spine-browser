@@ -7,6 +7,15 @@ function versionSeries(version) {
   return typeof version === 'string' ? version.match(/^(\d+\.\d+)(?:\.|$)/)?.[1] || null : null;
 }
 
+function binaryHeaderVersion(bytes) {
+  let offset=0;
+  function string(){let length=0,shift=0,byte;do{if(offset>=bytes.length||shift>28)throw Error('Invalid binary header.');byte=bytes[offset++];length|=(byte&127)<<shift;shift+=7;}while(byte&128);if(length<=1)return '';length--;if(length<0||offset+length>bytes.length)throw Error('Invalid binary header.');const value=bytes.subarray(offset,offset+length).toString('utf8');offset+=length;return value;}
+  const valid=value=>/^\d+\.\d+(?:\.\d+)?(?:-beta)?$/.test(value);
+  try{string();const value=string();if(valid(value))return value;}catch{}
+  // Spine 4.x stores its hash as eight bytes rather than a string.
+  offset=8;try{const value=string();return /^4\./.test(value)&&valid(value)?value:null;}catch{return null;}
+}
+
 async function readSkeletonJson(filePath) {
   return JSON.parse((await fs.readFile(filePath, 'utf8')).replace(/^\uFEFF/, ''));
 }
@@ -31,7 +40,7 @@ async function readSpineVersionFromFile(filePath) {
   try {
     const buffer = Buffer.alloc(512);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return buffer.subarray(0, bytesRead).toString('latin1').match(/\d+\.\d+\.\d+(?:-beta)?/)?.[0] || null;
+    return binaryHeaderVersion(buffer.subarray(0,bytesRead));
   } finally { await handle.close(); }
 }
 
@@ -113,10 +122,16 @@ async function findSkeletonAssetPair(filePath) {
     // Numbered editor projects can have one descriptively named skeleton in both formats.
     if (!skeleton && singleExport) skeleton = preferredExport(exports);
   }
+  let fallbackReason;
+  if(skeleton&&/\.skel$/i.test(skeleton)){
+    const binary=await detectSpineFileCompatibility(path.join(dir,skeleton));
+    const json=exports.find(file=>/\.json$/i.test(file)&&stem(file)===stem(skeleton));
+    if(binary.mismatch&&json&&!(await detectSpineFileCompatibility(path.join(dir,json))).mismatch){fallbackReason=`Previewing ${json}; ${skeleton} has an unsupported or unknown binary version.`;skeleton=json;}
+  }
   const atlas = skeleton && atlasFor(skeleton);
   if (!skeleton || !atlas) return { skeletonPath: null, atlasPath: null,
     reason: 'No unambiguous matching .skel/.json and .atlas or .atlas.txt pair was found in this folder.' };
-  return { skeletonPath: path.join(dir, skeleton), atlasPath: path.join(dir, atlas) };
+  return { skeletonPath: path.join(dir, skeleton), atlasPath: path.join(dir, atlas),...(fallbackReason?{fallbackReason}:{}) };
 }
 
-module.exports = { versionSeries, readSpineVersionFromFile, detectSpineFileCompatibility, scanDirectory, findSkeletonAssetPair };
+module.exports = { versionSeries, binaryHeaderVersion,readSpineVersionFromFile, detectSpineFileCompatibility, scanDirectory, findSkeletonAssetPair };

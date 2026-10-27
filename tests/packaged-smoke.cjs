@@ -75,7 +75,8 @@ async function run(){
       state=await evaluate('({file:selectedProject?.fullPath,version:activePlayer?.skeleton?.data.version,time:playbackControls?.currentTime(),note:previewText.textContent,finite:activePlayer?.skeleton?.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})');
       if(state.time>0.1)break;await wait(50);
     }
-    const compatibility=await require('../project-assets').detectSpineFileCompatibility(state.file);
+    const assets=require('../project-assets'),pair=await assets.findSkeletonAssetPair(state.file);
+    const compatibility=await assets.detectSpineFileCompatibility(pair.skeletonPath);
     assert.ok(state.version,JSON.stringify(state));
     assert.equal(compatibility.mismatch,false);assert.equal(state.version,compatibility.fileVersion);assert.ok(state.time>0.1);assert.equal(state.finite,true);
     if(state.version==='3.8.75')assert.match(state.note,/best-effort/);
@@ -120,6 +121,25 @@ async function run(){
   checks.push('Packaged importer offers saving the new project directly into Main');
   const missingImages=await importEvaluate(`spineImport.inspect(${JSON.stringify(path.join(root,'tests/fixtures/4.2'))}).then(()=>null,error=>error.message)`);
   assert.match(missingImages,/images folder beside/);checks.push('Packaged import service validates the required project structure');
+  if(process.env.SPINE_IMPORT_RECOVERY_EXPORT){
+    await importEvaluate(`importWorkspace.open('import',${JSON.stringify(process.env.SPINE_IMPORT_RECOVERY_EXPORT)})`);
+    await importEvaluate('document.querySelector("#importChoices button").click()');
+    let recovered;
+    for(let i=0;i<500;i++){
+      recovered=await importEvaluate('({busy:importWorkspace.state.busy,project:importWorkspace.state.import,preview:importWorkspace.views.import.inspect(),status:document.getElementById("status").textContent})');
+      if(!recovered.busy)break;await wait(100);
+    }
+    assert.match(recovered.project?.version||'',/^3\.8\./,JSON.stringify(recovered));assert.ok(recovered.preview?.frame,JSON.stringify(recovered));
+    checks.push('Packaged Create working .spine copy recovers the actual custom-header 2.x VFX and previews it');
+  }
+  if(process.env.IMPORT_PREVIEW_ACCEPTANCE){
+    const actual=JSON.parse(fs.readFileSync(process.env.IMPORT_PREVIEW_ACCEPTANCE,'utf8'));
+    for(const role of ['main','import'])await importEvaluate(`importWorkspace.views.${role}.show(${JSON.stringify(actual[role])},${JSON.stringify(actual[role].animation)},'default')`);
+    const preview=await importEvaluate('(()=>{const v=importWorkspace.views.main;v.seek(v.duration()*.3);return v.inspect();})()');
+    assert.equal(preview.autoFit,true);assert.ok(preview.frame.height<preview.animationFrame.height*.5,JSON.stringify(preview));
+    const outlines=await importEvaluate('({main:getComputedStyle(document.getElementById("mainPane")).borderColor,source:getComputedStyle(document.getElementById("importPane")).borderColor})');assert.notEqual(outlines.main,outlines.source);
+    checks.push('Packaged dynamic fitting keeps the actual Maeve skill readable and Main/Import outlines distinct');
+  }
   if(process.env.SPINE_IMPORT_MAIN_PROJECT){
     const project=await importEvaluate(`spineImport.inspect(${JSON.stringify(process.env.SPINE_IMPORT_MAIN_PROJECT)})`);
     assert.ok(project.id);assert.ok(project.skeletons.length>0);checks.push('Packaged importer inspects a real native project through installed Spine');

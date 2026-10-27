@@ -16,6 +16,10 @@ Open **Import → Import animation…** from the app menu, or select **Import an
 
 Each input must have a `.spine` file and an `images/` folder beside it, in separate project folders. Choose the intended `.spine` file if a folder contains several. When only a skeleton JSON or binary export is available, **Create working .spine copy** reconstructs a project and copies its images into the app's import workspace. Original files stay unchanged. An installed, activated Spine editor is required for this feature; configure its command-line executable under **Spine installation**. Ordinary library previews still work without the editor.
 
+Legacy 2.x exports are reconstructed through Spine 3.8, which supports command-line import, then upgraded by Main when needed. Standard legacy binaries use the same decoder as library previews. Custom binary headers use a matching JSON export when present; unknown headers are never interpreted as editor version numbers. Source version metadata is retained, and attachment hide keys remain hidden. Spine 3.8.99 is requested when no 3.8 patch is installed.
+
+Main and Import have blue and purple outlines and equal-width responsive previews. **Auto fit** follows the current visible pose during playback and scrubbing, excluding transparent effect attachments. It expands immediately for newly visible effects and eases into smaller poses. **Fit animation** switches to a fixed view of the full selected animation; turn **Auto fit** back on to follow the current pose. Click a preview to pause or resume; drag left or right to scrub and remain paused. The timeline slider is also available.
+
 The importer reads fresh JSON from the saved projects, with nonessential data enabled. Main must use the same Spine version or a later version than Import. Earlier projects are converted by the Main editor in a working copy; version strings are never changed to bypass format compatibility. The matching editor versions must be available through the Spine launcher.
 
 Select one source animation, then **Review import**. The dependency pass retains the animation's keys, setup-visible attachments, ancestor and weighted-mesh bones, linked meshes, clipping and path dependencies, constraints, events, and referenced images. Other source animations and their unused assets are excluded. With new skins enabled, imported artwork belongs to the new prefixed skins, including a skin for source-default artwork. The combined preview selects the matching imported skin automatically.
@@ -36,7 +40,7 @@ The new `.spine` project is rebuilt through Spine's official export/import workf
 
 ## Browse and preview
 
-Preview discovery accepts both `.atlas` and Unity `.atlas.txt` files, including uppercase extensions and multiple texture pages. When both atlas forms have the same name, `.atlas` takes priority. Source exports do not need to be renamed.
+Preview discovery accepts both `.atlas` and Unity `.atlas.txt` files, including uppercase extensions and multiple texture pages. When both atlas forms have the same name, `.atlas` takes priority. Source exports do not need to be renamed. When a binary has an unsupported or custom version header, project and binary previews use a supported JSON export with the same filename stem when available. The preview status identifies this fallback; source files remain unchanged.
 
 Use Left/Right to browse adjacent files and Up/Down to move between visual rows in the library. Highlighting updates immediately; the preview loads after 200 ms without another arrow press, so holding a key skips intermediate loads. Navigation follows the current search/category filters and scrolls the highlighted card into view. Arrow keys retain their usual behavior in text fields and controls. Click the animation canvas to pause/resume, or drag left/right to scrub the animation while paused. The selected asset has a bright green outline.
 
@@ -53,7 +57,7 @@ npm install
 npm start
 ```
 
-To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.4.6-portable.exe`; users can run that single file without installing Node.js. Browsing exports works without Spine; native project importing requires an installed, activated Spine editor. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
+To build a portable Windows x64 executable, run `npm ci` followed by `npm run build:win`. The result is `dist/Spine-Browser-1.4.8-portable.exe`; users can run that single file without installing Node.js. Browsing exports works without Spine; native project importing requires an installed, activated Spine editor. The app is unsigned, so Windows may display an unknown-publisher warning. Build output excludes test fixtures, snapshots, temporary files, and local settings. Upload the executable as a GitHub Release asset; keep generated builds out of the source repository.
 
 `node tests/packaged-smoke.cjs` launches the generated executable with a temporary user profile and checks JSON and binary playback using the checked-in fixtures. It saves results and a screenshot under `.temp/`.
 

@@ -1,6 +1,6 @@
 {
   "name": "spine-browser",
-  "version": "1.4.6",
+  "version": "1.4.8",
   "description": "Simple Spine project browser",
   "main": "main.js",
   "scripts": {

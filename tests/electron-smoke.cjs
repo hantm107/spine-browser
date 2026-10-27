@@ -190,6 +190,10 @@ async function run() {
     await evaluate('playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true');await wait(100);
     fs.writeFileSync(path.join(root, '.temp/user-asset-verification.png'), (await win.webContents.capturePage()).toPNG());
     if(process.env.SPINE_TEST_ANIMATION){await evaluate(`playbackControls.choose(${JSON.stringify(process.env.SPINE_TEST_ANIMATION)});playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration/2);activePlayer.paused=true`);await wait(100);fs.writeFileSync(path.join(root,'.temp/user-animation-verification.png'),(await win.webContents.capturePage()).toPNG());}
+    if(process.env.SPINE_TEST_ALL_ANIMATIONS){
+      const names=await evaluate('activePlayer.skeleton.data.animations.map(a=>a.name)');
+      for(const name of names){await evaluate(`playbackControls.choose(${JSON.stringify(name)});playbackControls.seek((activePlayer.animationState.getCurrent?.(0)||activePlayer.animationState.getTrack?.(0)).animation.duration*.5);activePlayer.paused=true`);await check('actual asset animation '+name,'({finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY)),error:previewTitle.textContent})',r=>{assert.equal(r.finite,true);assert.notEqual(r.error,'Preview failed');});}
+    }
   }
   win.hide();
   await evaluate(`selectProject(${project(modernFile)})`);
@@ -201,6 +205,13 @@ async function run() {
   await evaluate(`selectProject(${project(upperFile.replace('.json', '.JSON'))})`);
   await until('!!activePlayer?.skeleton');
   await check('uppercase JSON extensions play', `activePlayer.animationState.getTrack(0).animation.name`, r => assert.equal(r, 'Idle'));
+  const customFolder=path.join(fixtures,'custom-header');fs.cpSync(path.join(root,'tests/fixtures/2.1'),customFolder,{recursive:true});
+  const customBinary=path.join(customFolder,'spineboy-pro.skel'),customProject=path.join(customFolder,'spineboy-pro.spine'),header='HuaHua2.0';
+  fs.writeFileSync(customBinary,Buffer.concat([Buffer.from([1,header.length+1]),Buffer.from(header)]));fs.writeFileSync(customProject,'editor project');
+  for(const file of [customProject,customBinary]){
+    await evaluate(`selectProject(${project(file)})`);await until('!!activePlayer?.skeleton && playbackControls.currentTime()>.05');
+    await check('custom-header '+path.extname(file)+' previews matching JSON','({version:activePlayer.skeleton.data.version,note:previewText.textContent})',r=>{assert.ok(r.version.startsWith('2.1.'));assert.match(r.note,/Previewing spineboy-pro.json.*unsupported or unknown binary/);});
+  }
   for (const [series,extension] of [['3.6','json'],['4.2','skel']]) {
     const folder=path.join(fixtures,'unity-'+series);
     fs.cpSync(path.join(root,'tests/fixtures',series),folder,{recursive:true});
