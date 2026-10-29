@@ -1,12 +1,12 @@
 {
   "name": "spine-browser",
-  "version": "1.4.8",
+  "version": "1.5.2",
   "description": "Simple Spine project browser",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test:import-native": "node --test tests/import-native.test.cjs",
-    "test": "node --test tests/project-assets.test.cjs tests/old-spine-decoder.test.cjs tests/import-merge.test.cjs tests/import-service.test.cjs tests/append-list.test.cjs && node tests/run-electron.cjs && node tests/run-import-ui.cjs",
+    "test:import-native": "node --test --test-concurrency=1 tests/import-native.test.cjs tests/sequence-native.test.cjs",
+    "test": "node --test tests/project-assets.test.cjs tests/old-spine-decoder.test.cjs tests/import-merge.test.cjs tests/image-sequences.test.cjs tests/import-service.test.cjs tests/append-list.test.cjs && node tests/run-electron.cjs && node tests/run-import-ui.cjs",
     "build:win": "electron-builder --win --x64"
   },
   "devDependencies": {

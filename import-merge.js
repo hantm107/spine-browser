@@ -3,6 +3,7 @@
 // Pure data operations. Both inputs must first be exported by the same Spine
 // editor series. Version conversion belongs to Spine, never to this module.
 const clone = value => structuredClone(value);
+const imageSequences=require('./image-sequences');
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o || {}, k);
 const entries = value => Object.entries(value || {});
 const groups = ['ik', 'transform', 'path', 'physics'];
@@ -291,7 +292,7 @@ function buildMerge(mainInput, sourceInput, options = {}) {
       if (paths.length) {
         const before = imagePaths(a.name, a.attachment);
         copy.path = folder?`${folder}/${display}`:display;
-        imagePaths(place, copy).forEach((name, i) => files.push({source:before[i], destination:name, attachment:display, skin:output.name}));
+        imagePaths(place, copy).forEach((name, i) => files.push({source:before[i], destination:name, attachment:display, skin:output.name,slot:slotMap.get(a.slot)}));
       }
       if (copy.parent) {
         const parentId = JSON.stringify([copy.skin || 'default', a.slot, copy.parent]);
@@ -390,6 +391,66 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   main.animations ||= {}; main.animations[animationName] = animation;
   main.skeleton = {...main.skeleton, images:'./images/'}; delete main.skeleton.hash;
   const previewSkin=createSkins?(skinMap.get(selectedSkin)||importedSkins[0]?.name||'default'):'default';
-  return {data:canonicalizeDefaultAttachments(main), group, prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
+  const result={data:canonicalizeDefaultAttachments(main), group, prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
+  return renameImageSequences(result,options.sequenceRenames||{},options.replaceSequenceNames===true);
+}
+function renameImageSequences(result,requestedRules,automatic){
+  const definitions=skinsOf(result.data).flatMap(skin=>Object.entries(skin.attachments||{}).flatMap(([slot,values])=>Object.entries(values).filter(([,a])=>a.sequence).map(([key,a])=>({skin:skin.name,name:a.name,owner:JSON.stringify([slot,key])}))));
+  const detected=imageSequences.detect(result.files,definitions,result.group,result.rows),byId=new Map(detected.map(g=>[g.id,g])),renames=new Map();
+  const keyFor=(skin,name)=>JSON.stringify([skin,name]);
+  const rules={...requestedRules};
+  if(automatic){
+    const occupied=new Set(skinsOf(result.data).flatMap(skin=>Object.values(skin.attachments||{}).flatMap(values=>Object.entries(values).map(([key,a])=>(a.name||key).toLowerCase()))));
+    for(const [id,rule]of Object.entries(rules))if(rule&&byId.has(id)){const group=byId.get(id),names=imageSequences.names(group,rule);for(const name of group.native?[names.attachmentBase,...names.files]:names.files)occupied.add(name.toLowerCase());}
+    let index=1;
+    for(const group of detected)if(group.canRename&&!own(rules,group.id)){
+      let rule,names,candidates;
+      do{rule={prefix:`Sequence${index++}_`,suffix:'',start:1,padding:3};names=imageSequences.names(group,rule);candidates=group.native?[names.attachmentBase,...names.files]:names.files;}while(candidates.some(name=>occupied.has(name.toLowerCase())));
+      rules[group.id]=rule;group.defaultPrefix=rule.prefix;for(const name of candidates)occupied.add(name.toLowerCase());
+    }
+  }
+  for(const [id,rule]of Object.entries(rules)){
+    const group=byId.get(id);if(!group)throw Error('Image sequence groups changed. Clear the sequence settings and review the import again.');
+    if(rule===null)continue;
+    const renamed=imageSequences.names(group,rule);group.applied=true;
+    group.frames.forEach((frame,i)=>{
+      for(const use of frame.uses){
+        const key=keyFor(use.skin,use.attachment),name=group.native?renamed.attachmentBase:renamed.files[i];
+        const prior=renames.get(key);if(prior&&prior.name!==name)throw Error('An attachment belongs to conflicting image sequences.');
+        renames.set(key,{name,group:id,source:frame.source,native:group.native,start:renamed.start,padding:renamed.padding});
+        const file=result.files[use.fileIndex],slash=file.destination.lastIndexOf('/');
+        file.destination=(slash<0?'':file.destination.slice(0,slash+1))+renamed.files[i];file.attachment=name;file.sequenceGroup=id;
+        frame.destination=file.destination;
+      }
+    });
+  }
+  if(renames.size){
+    const occupied=new Set(),newNames=new Map();
+    for(const skin of skinsOf(result.data))for(const values of Object.values(skin.attachments||{}))for(const [key,a]of Object.entries(values))if(!renames.has(keyFor(skin.name,a.name||key)))occupied.add((a.name||key).toLowerCase());
+    for(const {name,group,source}of renames.values()){
+      const lower=name.toLowerCase(),identity=JSON.stringify([group,source]);if(occupied.has(lower)||(newNames.has(lower)&&newNames.get(lower)!==identity))throw Error(`Sequence attachment name collision: ${name}. Choose a different new name or suffix.`);newNames.set(lower,identity);
+    }
+    const destinations=new Map(),unique=[],indexes=new Map();
+    result.files.forEach((file,index)=>{
+      const name=file.destination.toLowerCase(),existing=destinations.get(name);
+      if(existing){
+        if(!file.sequenceGroup||existing.file.source.replace(/\\/g,'/')!==file.source.replace(/\\/g,'/')||existing.file.sequenceGroup!==file.sequenceGroup)throw Error(`Sequence image filename collision: ${file.destination}.`);
+        indexes.set(index,existing.index);
+      }else{const i=unique.length;unique.push(file);destinations.set(name,{file,index:i});indexes.set(index,i);}
+    });
+    result.files=unique;result.stats.images=unique.length;
+    for(const group of detected)for(const frame of group.frames){frame.fileIndex=indexes.get(frame.fileIndex);for(const use of frame.uses)use.fileIndex=indexes.get(use.fileIndex);}
+    for(const skin of skinsOf(result.data))for(const values of Object.values(skin.attachments||{}))for(const [key,a]of Object.entries(values)){
+      const rename=renames.get(keyFor(skin.name,a.name||key));if(!rename)continue;
+      a.name=rename.name;if(a.path!=null)a.path=(a.path.includes('/')?a.path.slice(0,a.path.lastIndexOf('/')+1):'')+rename.name;
+      if(rename.native){a.sequence.start=rename.start;a.sequence.digits=rename.padding;}
+    }
+    const rowNames=new Map([...renames.entries()].map(([key,value])=>[JSON.parse(key)[1],value]));
+    for(const row of result.rows)if(row.type==='attachment'&&rowNames.has(row.result)){const value=rowNames.get(row.result);row.result=value.name;row.sequenceGroup=value.group;}
+    // Default attachment keys are actual names in Spine. This also updates
+    // setup, attachment/deform keys, and linked-mesh parents without retiming.
+    result.data=canonicalizeDefaultAttachments(result.data);
+  }
+  result.sequenceGroups=detected;result.sequenceRenames=rules;return result;
 }
 module.exports = {buildMerge, dependencySet, compareVersions, nextGroup, imagePaths, skinsOf, safeName, validateImageFolder:imageFolder, canonicalizeDefaultAttachments, verifySavedAttachmentKeys};

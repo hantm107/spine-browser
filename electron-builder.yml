@@ -9,6 +9,7 @@ files:
   - project-assets.js
   - import-service.js
   - import-merge.js
+  - image-sequences.js
   - import.html
   - import.css
   - import-ui.js

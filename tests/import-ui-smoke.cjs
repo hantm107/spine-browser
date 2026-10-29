@@ -7,6 +7,10 @@ let win;const wait=ms=>new Promise(r=>setTimeout(r,ms)),checks=[];
 let pendingAppendSource=null,folderDialogs=0,appendRecords=[];
 const evaluate=code=>win.webContents.executeJavaScript(code).catch(error=>{console.error('Failed UI expression:',code);throw error;});
 const data=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/4.2/spineboy-pro.json')));
+const planData=structuredClone(data);
+for(let i=0;i<6;i++){const slot='sequence-test-'+i;planData.slots.push({name:slot,bone:data.bones[0].name,attachment:'frame2'});
+planData.skins[0].attachments[slot]=Object.fromEntries([2,4,8,10].map(n=>['frame'+n,{path:'test/frame_'+String(n).padStart(3,'0'),width:20,height:20}]));
+planData.animations.walk.slots ||= {};planData.animations.walk.slots[slot]={attachment:[{name:'frame2'},{time:.1,name:'frame4'},{time:.2,name:'frame8'},{time:.3,name:'frame10'}]};}
 const fixture=path.join(__dirname,'fixtures/4.2/spineboy-pro.json'),atlas=path.join(__dirname,'fixtures/4.2/spineboy-pro.atlas');
 const framedFixture=path.join(scratch,'hidden-effect.json'),framedData=structuredClone(data);
 framedData.slots.push({name:'hidden-effect',bone:data.bones[0].name,attachment:'hidden-effect',color:'ffffff00'});
@@ -25,7 +29,7 @@ app.whenReady().then(async()=>{
     'import-select-project':()=>{folderDialogs++;throw Error('This test should not open a folder dialog.');},
     'import-inspect':(_,file)=>descriptor(file.includes('main')?'main':file.includes('second')?'second':'source'),
     'import-preview':()=>({skeletonPath:framedFixture,atlasPath:atlas}),
-    'import-plan':(_,options)=>{const m=buildMerge(data,data,options);return {id:'plan',appendToMain:options.appendToMain===true,mainFolder:scratch,group:m.group,imageFolder:m.imageFolder,createSkins:m.createSkins,previewSkin:m.previewSkin,sourceSkin:m.sourceSkin,animationName:m.animationName,rows:m.rows,stats:m.stats,skins:m.skinNames,warnings:[]};},
+    'import-plan':(_,options)=>{const m=buildMerge(data,planData,options);return {id:'plan',appendToMain:options.appendToMain===true,mainFolder:scratch,group:m.group,imageFolder:m.imageFolder,createSkins:m.createSkins,previewSkin:m.previewSkin,sourceSkin:m.sourceSkin,animationName:m.animationName,rows:m.rows,sequenceRenames:m.sequenceRenames,sequenceGroups:m.sequenceGroups.map(g=>({...g,frames:g.frames.map(f=>({...f,extension:'.png'}))})),stats:m.stats,skins:m.skinNames,warnings:[]};},
     'import-preview-plan':()=>({skeletonPath:merged,atlasPath:atlas,animation:merge.animationName}),
     'detect-spine-version':(_,file)=>require('../project-assets').detectSpineFileCompatibility(file),
     'read-text-file':(_,file)=>fs.readFileSync(file,'utf8'),
@@ -61,6 +65,14 @@ app.whenReady().then(async()=>{
   for(let i=0;i<100;i++){if(await evaluate('!!importWorkspace.state.plan'))break;await wait(30);}
   assert.equal(await evaluate('document.getElementById("save").disabled'),false);
   assert.ok((await evaluate('document.getElementById("reviewSummary").textContent')).includes('ImportedMain_walk'));checks.push('Review shows the single selected animation and enables save');
+  const group=await evaluate('importWorkspace.state.sequenceGroups.find(g=>g.prefix==="frame_")');assert.deepEqual(group.frames.map(f=>f.number),['002','004','008','010']);
+  assert.equal(group.canRename,true);assert.equal(group.useCount,24);assert.equal(group.slotCount,6);assert.equal(await evaluate('document.querySelector(".sequence-enable input").disabled'),false);assert.equal(await evaluate('document.querySelector(".sequence-card [data-field=prefix]").disabled'),false);checks.push('Reused images across six slots form one editable sequence with unique frame numbers');
+  const defaults=await evaluate('({rules:importWorkspace.state.sequenceRenames,rows:importWorkspace.state.plan.rows.filter(r=>r.sequenceGroup),checked:document.querySelector(".sequence-enable input").checked})');assert.equal(defaults.checked,true);assert.ok(defaults.rows.every(r=>/^Sequence\d+_\d{3}$/.test(r.result)));checks.push('Detected groups start enabled with complete new names containing no source or import prefixes');
+  const previewNames=await evaluate(`(()=>{const card=[...document.querySelectorAll('.sequence-card')].find(c=>c.dataset.group===${JSON.stringify(group.id)});card.querySelector('input[type=checkbox]').checked=true;card.querySelector('input[type=checkbox]').dispatchEvent(new Event('change'));for(const [key,value]of Object.entries({prefix:'Thunder_',suffix:'_hit',start:1,padding:3})){const input=card.querySelector('[data-field='+key+']');input.value=value;input.dispatchEvent(new Event('input'));}return [...card.querySelectorAll('tbody tr')].map(row=>row.lastChild.textContent);})()`);
+  assert.deepEqual(previewNames,['Thunder_001_hit.png','Thunder_002_hit.png','Thunder_003_hit.png','Thunder_004_hit.png']);assert.equal(await evaluate('document.getElementById("save").disabled'),true);checks.push('Sequence cards detect gaps, preview dense numeric renaming, and invalidate saving when edited');
+  await evaluate('document.getElementById("review").click()');for(let i=0;i<100;i++){if(await evaluate('!!importWorkspace.state.plan&&!importWorkspace.state.busy'))break;await wait(30);}
+  const renamed=await evaluate('({rows:importWorkspace.state.plan.rows.filter(r=>r.sequenceGroup),readonly:document.querySelectorAll("#mappingRows input[readonly]").length})');assert.equal(renamed.rows.length,24);assert.equal(renamed.readonly,24);assert.ok(renamed.rows.every(r=>r.result.startsWith('Thunder_')));checks.push('Reviewed sequence names control the attachment mappings and persist across review');
+  await evaluate('document.getElementById("sequencePanel").scrollIntoView()');await wait(50);fs.writeFileSync(path.join(root,'.temp/sequence-renaming-ui.png'),(await win.webContents.capturePage()).toPNG());
   await evaluate('(()=>{const input=document.querySelector("#mappingRows input");input.value="CustomRoot";input.dispatchEvent(new Event("input"));})()');
   assert.equal(await evaluate('document.getElementById("save").disabled'),true);checks.push('Editing a mapping invalidates the saved review');
   await evaluate('document.getElementById("review").click()');
