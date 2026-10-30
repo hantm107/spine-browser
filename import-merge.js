@@ -221,11 +221,25 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   if (series(main.skeleton?.spine).join('.') !== series(source.skeleton?.spine).join('.')) throw Error('Convert both skeletons using the Main project editor version before merging.');
   if (!main.bones?.length || !source.bones?.length) throw Error('Both projects must contain a root bone.');
   const prefix=options.prefix??'ImportedMain',folder=(options.useImageFolder??Boolean(options.imageFolder))?imageFolder(options.imageFolder):'';
-  const dep = dependencySet(source, options.animation), group = nextGroup(main,prefix), rows = [];
-  const animationName = String(options.animationName || `${group}_${options.animation}`).trim();
-  if (!animationName || own(main.animations, animationName)) throw Error('The new animation name must be nonempty and unique.');
+  if(options.animations!==undefined&&!Array.isArray(options.animations))throw Error('Choose one or more animations from the Import project.');
+  const selected=[...new Set(options.animations??[options.animation])];
+  if(!selected.length)throw Error('Choose at least one animation to import.');
+  if(selected.length>1&&options.animationName?.trim())throw Error('Use the animation mapping rows to name multiple animations.');
+  const dependencies=selected.map(name=>dependencySet(source,name)),dep=dependencies[0];
+  for(const other of dependencies.slice(1)){
+    for(const field of ['bones','slots'])for(const name of other[field])dep[field].add(name);
+    for(const [key,value]of other.attachments)dep.attachments.set(key,value);
+    for(const g of groups)for(const name of other.constraints[g])dep.constraints[g].add(name);
+  }
+  const group = nextGroup(main,prefix), rows = [], animationNames=[],animations=[];
+  for(const name of selected){
+    const result=String(options.overrides?.[`animation:${name}`]??(selected.length===1&&options.animationName||`${group}_${name}`)).trim();
+    if(!result||own(main.animations,result)||animationNames.includes(result))throw Error('The new animation names must be nonempty and unique.');
+    animationNames.push(result);animations.push({source:name,result});
+  }
+  const animationName=animationNames[0];
   const supported = new Set(['bones','slots','ik','transform','path','paths','physics','deform','ffd','attachments','drawOrder','draworder','events']);
-  for (const key of Object.keys(dep.animation)) if (!supported.has(key)) throw Error(`Unsupported animation timeline: ${key}`);
+  for(const name of selected)for (const key of Object.keys(source.animations[name])) if (!supported.has(key)) throw Error(`Unsupported animation timeline: ${key}`);
   const used = new Map();
   function rename(type, id, original, fallback) {
     const rule = options.rename || {};
@@ -242,7 +256,7 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   const slotMap = new Map((source.slots || []).filter(s => dep.slots.has(s.name)).map(s => [s.name, `${group}_${safeName(s.name)}`]));
   const skinMap = new Map(dep.skins.map(s => [s.name, createSkins?`${group}_${safeName(s.name)}`:'default']));
   const constraintMaps = Object.fromEntries(groups.map(g => [g, new Map((source[g] || []).filter(c => dep.constraints[g].has(c.name)).map(c => [c.name, `${group}_${safeName(c.name)}`]))]));
-  const eventNames = new Set((dep.animation.events || []).map(e => e.name));
+  const eventNames = new Set(selected.flatMap(name=>(source.animations[name].events||[]).map(e=>e.name)));
   const eventMap = new Map([...eventNames].map(n => [n, `${group}_${safeName(n)}`]));
   const placeholderMap = new Map(), attachmentMap = new Map();
   for (const [id, a] of dep.attachments) {
@@ -330,7 +344,8 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   if(!createSkins&&importedDefault)for(const field of ['bones',...groups])if(importedDefault[field]?.length)defaultSkin[field]=[...new Set([...(defaultSkin[field]||[]),...importedDefault[field]])];
   const resultSkins=createSkins?[...targetSkins,...importedSkins]:targetSkins;
   main.skins = Array.isArray(mainInput.skins) ? resultSkins : Object.fromEntries(resultSkins.map(s => [s.name,s.attachments]));
-  const animation = clone(dep.animation);
+  for(const {source:sourceName,result:outputName}of animations){
+  const animation = clone(source.animations[sourceName]);
   const remapKeys = (object, map) => Object.fromEntries(entries(object).map(([name,value]) => { if (!map.has(name)) throw Error(`Unresolved animation reference: ${name}`); return [map.get(name), value]; }));
   if (animation.bones) animation.bones = remapKeys(animation.bones, boneMap);
   if (animation.slots) {
@@ -383,15 +398,17 @@ function buildMerge(mainInput, sourceInput, options = {}) {
     });
   }
   if (animation.events) for (const event of animation.events) event.name = eventMap.get(event.name);
+  main.animations ||= {}; main.animations[outputName] = animation;
+  }
   const audio=[];
   for (const [name, mapped] of eventMap) {
     main.events ||= {}; main.events[mapped] = clone(source.events?.[name] || {});
     if(main.events[mapped].audio){const original=main.events[mapped].audio,destination=`${group}_${safeName(original)}`;audio.push({source:original,destination});main.events[mapped].audio=destination;}
   }
-  main.animations ||= {}; main.animations[animationName] = animation;
+  if(animations.length>1)for(const item of animations)rows.push({id:`animation:${item.source}`,type:'animation',original:item.source,result:item.result});
   main.skeleton = {...main.skeleton, images:'./images/'}; delete main.skeleton.hash;
   const previewSkin=createSkins?(skinMap.get(selectedSkin)||importedSkins[0]?.name||'default'):'default';
-  const result={data:canonicalizeDefaultAttachments(main), group, prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
+  const result={data:canonicalizeDefaultAttachments(main), group, prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName,animationNames,animations, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{animations:animations.length,bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
   return renameImageSequences(result,options.sequenceRenames||{},options.replaceSequenceNames===true);
 }
 function renameImageSequences(result,requestedRules,automatic){

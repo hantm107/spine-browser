@@ -4,6 +4,41 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {createImportService,runSpine}=require('../import-service');
 const cli=process.env.SPINE_NATIVE_IMPORT_CLI,version=process.env.SPINE_NATIVE_IMPORT_VERSION||'4.2.43';
 
+test('batch import saves every selected clip with one shared rig and renamed images in both skin modes',{skip:!cli,timeout:240000},async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-batch-import-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:150}));
+  const main=path.join(root,'main'),source=path.join(root,'source');
+  for(const folder of [main,source])await fs.mkdir(path.join(folder,'images'),{recursive:true});
+  await fs.mkdir(path.join(source,'images','fx'));
+  for(const n of [2,4,8])await fs.copyFile(path.join(__dirname,'fixtures/4.2/spineboy.png'),path.join(source,'images','fx',`frame_${n}.png`));
+  const base={skeleton:{spine:version,images:'./images/'},bones:[{name:'root'}],animations:{idle:{bones:{root:{rotate:[{value:5}]}}}}};
+  const input={skeleton:{spine:version,images:'./images/'},bones:[{name:'root'},{name:'body',parent:'root'}],slots:[{name:'art',bone:'body',attachment:'frame2'}],skins:[{name:'default',attachments:{art:Object.fromEntries([2,4,8].map(n=>['frame'+n,{path:'fx/frame_'+n,width:16,height:16}]))}},{name:'red',attachments:{}}],animations:{
+    flash:{bones:{body:{rotate:[{value:10},{time:.3,value:30}]}},slots:{art:{attachment:[{name:'frame4'},{time:.2,name:'frame8'},{time:.4,name:null}]}}},
+    return:{bones:{body:{translate:[{x:0},{time:.5,x:20}]}},slots:{art:{attachment:[{name:'frame8'},{time:.1,name:'frame2'},{time:.5,name:null}]}}},
+    unused:{bones:{body:{rotate:[{value:99}]}}}
+  }};
+  for(const [folder,data]of [[main,base],[source,input]]){await fs.writeFile(path.join(folder,'input.json'),JSON.stringify(data));await runSpine(cli,['-u',version,'-i',path.join(folder,'input.json'),'-o',path.join(folder,'project.spine'),'-r','project']);}
+  const original=await fs.readFile(path.join(main,'project.spine')),service=createImportService({root:path.join(root,'cache'),cliPath:cli});
+  const m=await service.inspect(path.join(main,'project.spine'),{editorVersion:version}),s=await service.inspect(path.join(source,'project.spine'),{editorVersion:version});
+  for(const createSkins of [false,true]){
+    const plan=await service.plan({mainId:m.id,importId:s.id,mainSkeleton:'project',importSkeleton:'project',animations:['flash','return'],prefix:'Batch',imageFolder:createSkins?'BatchSkins':'BatchDefault',createSkins,sourceSkin:'red',replaceSequenceNames:true,appendToMain:createSkins});
+    assert.deepEqual(plan.animationNames,['Batch_flash','Batch_return']);assert.equal(plan.stats.animations,2);
+    const preview=await service.previewPlan(plan.id);assert.deepEqual(preview.animations,plan.animationNames);assert.ok((await fs.stat(preview.atlasPath)).size>0);
+    const result=await service.execute(plan.id,root),report=JSON.parse(await fs.readFile(result.report,'utf8'));
+    assert.deepEqual(result.animationNames,plan.animationNames);assert.deepEqual(report.sourceAnimations,['flash','return']);assert.deepEqual(report.newAnimations,plan.animationNames);
+    assert.equal(report.attachmentVerification.totalKeys,6);assert.equal(report.attachmentVerification.namedKeys,4);assert.equal(report.attachmentVerification.animations.length,2);
+    assert.equal(report.images.length,createSkins?6:3);
+    const dir=path.join(root,createSkins?'verify-skins':'verify-default');await fs.mkdir(dir);
+    const config=path.join(root,'export.json');await fs.writeFile(config,JSON.stringify({class:'export-json',extension:'.json',nonessential:true}));
+    await runSpine(cli,['-u',version,'-i',result.project,'-o',dir,'-e',config]);
+    const saved=JSON.parse(await fs.readFile(path.join(dir,'project.json'),'utf8'));
+    assert.deepEqual(Object.keys(saved.animations).sort(),['Batch_flash','Batch_return','idle'].sort());
+    assert.equal(saved.bones.filter(b=>b.name==='Batch').length,1);assert.equal(saved.bones.filter(b=>b.name==='Batch_body').length,1);
+    assert.equal(saved.animations.Batch_flash.bones.Batch_body.rotate.at(-1).value,30);assert.equal(saved.animations.Batch_return.bones.Batch_body.translate.at(-1).x,20);
+    assert.equal(saved.animations.idle.bones.root.rotate[0].value,5);
+  }
+  assert.ok(original.equals(await fs.readFile(path.join(main,'project.spine'))));
+});
+
 test('identical basenames in different source folders append distinct bytes into one Main images subfolder',{skip:!cli,timeout:180000},async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-folder-sequences-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:150}));
   const main=path.join(root,'main'),source=path.join(root,'source');await fs.mkdir(path.join(main,'images'),{recursive:true});

@@ -262,7 +262,7 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
     for(const file of new Set([...copies.map(f=>f.from),...mainImages.map(f=>f.from),...audioCopies.map(f=>f.from)])) {const stat=await fs.stat(file);snapshots.push({file,size:stat.size,mtime:stat.mtimeMs});}
     const id=randomUUID(); plans.set(id,{id,options:cloneOptions(options),main,source,merged,copies,mainImages,missingExisting,audioCopies,snapshots});
     const sequenceGroups=merged.sequenceGroups.map(group=>({...group,frames:group.frames.map(frame=>({...frame,extension:path.extname(copies[frame.fileIndex].from).toLowerCase()}))}));
-    return {id,appendToMain:options.appendToMain===true,mainFolder:main.folder,group:merged.group,prefix:merged.prefix,imageFolder:merged.imageFolder,createSkins:merged.createSkins,previewSkin:merged.previewSkin,sourceSkin:merged.sourceSkin,animationName:merged.animationName,rows:merged.rows,sequenceRenames:merged.sequenceRenames,sequenceGroups,stats:merged.stats,skins:merged.skinNames,warnings:[...(imageFolder!==requestedImageFolder?[`images/${requestedImageFolder}/ exists; this import will use images/${imageFolder}/.`]:[]),...(merged.createSkins?[`In Spine, select skin ${merged.previewSkin} to display the imported artwork.`]:[]),...(missingExisting.length?[`${missingExisting.length} existing image references in other Main skeletons are missing. Their skeleton data will be preserved; those images remain unavailable.`]:[]),'The new project is rebuilt from Spine exports with nonessential data enabled. Editor-only information absent from exports cannot be retained.']};
+    return {id,appendToMain:options.appendToMain===true,mainFolder:main.folder,group:merged.group,prefix:merged.prefix,imageFolder:merged.imageFolder,createSkins:merged.createSkins,previewSkin:merged.previewSkin,sourceSkin:merged.sourceSkin,animationName:merged.animationName,animationNames:merged.animationNames,animations:merged.animations,rows:merged.rows,sequenceRenames:merged.sequenceRenames,sequenceGroups,stats:merged.stats,skins:merged.skinNames,warnings:[...(imageFolder!==requestedImageFolder?[`images/${requestedImageFolder}/ exists; this import will use images/${imageFolder}/.`]:[]),...(merged.createSkins?[`In Spine, select skin ${merged.previewSkin} to display the imported artwork.`]:[]),...(missingExisting.length?[`${missingExisting.length} existing image references in other Main skeletons are missing. Their skeleton data will be preserved; those images remain unavailable.`]:[]),'The new project is rebuilt from Spine exports with nonessential data enabled. Editor-only information absent from exports cannot be retained.']};
   }
   function appendsToMain(planId){const p=plans.get(planId);if(!p)throw Error('Review the import again before saving.');return p.options.appendToMain===true;}
   async function execute(planId,parent) {
@@ -298,11 +298,15 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
       const verify=path.join(dir,'verification'); await fs.mkdir(verify);
       await runSpine(p.main.cli,['-u',p.main.version,'-i',project,'-o',verify,'-e',await config(p.main.dir)]);
       const selected=await readJson(path.join(verify,safeName(p.options.mainSkeleton)+'.json'));
-      if(!selected.bones.some(b=>b.name===p.merged.group)||!ownAnimation(selected,p.merged.animationName))throw Error('Saved project verification failed.');
-      const attachmentVerification=verifySavedAttachmentKeys(p.merged.data,selected,p.merged.animationName,p.merged.group);
+      if(!selected.bones.some(b=>b.name===p.merged.group)||!p.merged.animationNames.every(name=>ownAnimation(selected,name)))throw Error('Saved project verification failed.');
+      const verifiedAnimations=p.merged.animationNames.map(name=>({name,...verifySavedAttachmentKeys(p.merged.data,selected,name,p.merged.group)}));
+      const attachmentVerification={totalKeys:verifiedAnimations.reduce((sum,a)=>sum+a.totalKeys,0),namedKeys:verifiedAnimations.reduce((sum,a)=>sum+a.namedKeys,0),animations:verifiedAnimations};
       const manifest={version:1,main:p.main.project,import:p.source.project,skeleton:p.options.mainSkeleton,importSkeleton:p.options.importSkeleton,animation:p.options.animation,newAnimation:p.merged.animationName,group:p.merged.group,prefix:p.merged.prefix,imageFolder:p.merged.imageFolder,createSkins:p.merged.createSkins,sourceSkin:p.merged.sourceSkin,sequenceRenames:p.merged.sequenceRenames,offsetX:1000,stats:p.merged.stats,mapping:p.merged.rows,images:[],missingExistingImages:p.missingExisting,note:'Rebuilt using official Spine JSON import/export. Original source projects are unchanged.'};
       for(const f of p.copies)manifest.images.push({source:f.from,destination:f.to,sha256:createHash('sha256').update(await fs.readFile(f.from)).digest('hex')});
       manifest.attachmentVerification=attachmentVerification;
+      manifest.animations=p.merged.animations;
+      manifest.sourceAnimations=p.merged.animations.map(a=>a.source);
+      manifest.newAnimations=p.merged.animationNames;
       manifest.previewSkin=p.merged.previewSkin;
       manifest.outputMode=append?'mainFolder':'newFolder';
       await fs.writeFile(path.join(dir,'import-report.json'),JSON.stringify(manifest,null,2));
@@ -316,7 +320,7 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
         files.push(...audio.values());
         destination=await publishToMainFolder({mainFolder:p.main.folder,mainProject:p.main.project,group:p.merged.group,projectFile:project,files,manifest,imageSubfolder:p.merged.imageFolder});
       }
-      plans.delete(planId); return {...destination,appendToMain:append,animationName:p.merged.animationName,group:p.merged.group,previewSkin:p.merged.previewSkin,stats:p.merged.stats};
+      plans.delete(planId); return {...destination,appendToMain:append,animationName:p.merged.animationName,animationNames:p.merged.animationNames,group:p.merged.group,previewSkin:p.merged.previewSkin,stats:p.merged.stats};
     } catch(error) { await fs.writeFile(path.join(dir,'IMPORT-FAILED.txt'),error.message).catch(()=>{}); throw Error(`Import failed; diagnostic files are in ${dir}. ${error.message}`); }
   }
   async function previewPlan(id) {
@@ -329,7 +333,7 @@ function createImportService({root, cliPath='C:\\Program Files\\Spine\\Spine.com
     await fs.writeFile(json,JSON.stringify(p.merged.data)); await fs.writeFile(settings,JSON.stringify(packSettings));
     progress('Packing images for the combined preview…');
     await runSpine(p.main.cli,['-u',p.main.version,'-i',images,'-o',dir,'-n','merged','-p',settings]);
-    p.preview={skeletonPath:json,atlasPath:path.join(dir,'merged.atlas'),version:p.main.version,animation:p.merged.animationName}; return p.preview;
+    p.preview={skeletonPath:json,atlasPath:path.join(dir,'merged.atlas'),version:p.main.version,animation:p.merged.animationName,animations:p.merged.animationNames}; return p.preview;
   }
   return {inspect:(...a)=>serial(()=>inspect(...a)),reconstruct:(...a)=>serial(()=>reconstruct(...a)),preview:(...a)=>serial(()=>preview(...a)),plan:(...a)=>serial(()=>plan(...a)),previewPlan:(...a)=>serial(()=>previewPlan(...a)),appendsToMain,execute:(...a)=>serial(()=>execute(...a))};
 }

@@ -1,5 +1,37 @@
 # Spine Browser — project handoff
 
+## v1.6.0 release continuation — 30 October 2026 (Asia/Saigon)
+
+The user authorized releasing the guided importer, batch-animation import, and collection browse-position changes together as v1.6.0. Source and lockfile now report 1.6.0, and these previously local changes are included in the release commit. Earlier sections below are dated implementation snapshots; their statements that the work was uncommitted or unpublished describe that earlier point in the session.
+
+Fresh release checks: all 78 unit tests and both Electron suites passed. The Windows portable build succeeded, and all 46 packaged-executable checks passed, including playback for JSON and binary fixtures across 2.0, 2.1, 3.0–3.8 and 4.0–4.2, restoring All assets after Favorites, guided-step locks, batch controls, and prominent buttons. The five native-editor tests passed earlier during batch-feature validation; the merge/service code has not changed since that pass, and they were not repeated for this release preparation.
+
+Artifact: `dist/Spine-Browser-1.6.0-portable.exe`, 71,303,190 bytes. SHA-256: `c2413af76fafebfaa2862dc81ed574f678616cc68eab4e741c9a6bdaa36f7cb9`. `dist/SHA256SUMS.txt` was regenerated. The executable and checksum are release assets; generated builds remain ignored. Release target: [v1.6.0](https://github.com/hantm107/spine-browser/releases/tag/v1.6.0); use the remote release to confirm publication status and Git for the exact release commit.
+
+## Guided importer UI continuation — 30 October 2026 (Asia/Saigon)
+
+The importer now has five numbered steps: projects, animation selection, names/images and review, combined preview, and save. A sticky progress bar and Continue buttons navigate available steps. Later stages are visibly greyed, with disabled fieldsets and `inert` content so they cannot be used by mouse or keyboard. Both projects must be inspected before step 2; confirming selected animations unlocks step 3; a reviewed plan unlocks step 4; a successfully loaded merged preview unlocks step 5. `selectionConfirmed` and `previewReady` in the UI state track these prerequisites. Changing projects or selected animations relocks dependent stages, while editing names/settings requires review and preview again. Completed save results remain accessible. No merge/service logic was changed for this UI work.
+
+Primary buttons are at least 52 pixels tall, with distinct blue Main/review, purple Import, and a 60-pixel green Save action. Available/current/completed steps, locked hints, keyboard focus on navigation, reduced-motion navigation, and responsive layout are included. Validation: `npm.cmd test` passed all 78 unit tests and both Electron suites; focused importer checks cover initial/partial locks, confirmation, preview failure/retry, successful preview unlocking save, edit/source-change invalidation, saved results, button sizes, focus, and 980-pixel layout without horizontal overflow. Rendered screenshots were inspected under `.temp/import-steps-initial.png`, `import-steps-save.png`, and `import-steps-narrow.png`. Native editor tests were not rerun for this UI-only change; their five passing tests from the batch change remain recorded below. All previous local work is preserved; this update is not committed, packaged, or published.
+
+## Batch-animation continuation — 30 October 2026 (Asia/Saigon)
+
+Local source now supports selecting several animations from one Import skeleton and saving them together. The import workspace adds an animation checklist with Select all/Clear selection, keeps batch selection independent from the source preview, adds editable animation mapping rows for batches, and offers a combined-preview animation selector. Single-animation imports retain their custom-name field and preview-selection behavior.
+
+`buildMerge` accepts `animations` while retaining the existing `animation` option. It unions the selected clips' dependencies, builds one shared rig/group/image set, remaps each clip independently, and applies sequence renaming across all imported timelines. Results include source/output mappings and `animationNames`, with the first `animationName` retained for compatibility. The service previews and saves all clips in one native project, verifies attachment selections for every imported animation, and includes aggregate/per-animation verification and names in the import report. Multi-project batching is not part of this change.
+
+The earlier local browse-position changes remain intact. These changes have not been committed, rebuilt into a portable executable, or published after v1.5.2.
+
+Validation on 30 October: `npm.cmd test` passed all 78 unit tests and both Electron suites; the importer UI suite passed again after the final single-checkbox preview adjustment. All five `test:import-native` tests passed with no skips using Spine 4.2.43 and the existing 3.8 recovery bridge. The new native batch case covers both skin modes, one shared rig, renamed shared images, preview packing, both output modes, all selected attachment keys, and preservation of Main's animation. An initial standard-suite attempt hit a Windows `ENOTEMPTY` temporary-directory cleanup error in the unchanged Append list test; the complete rerun passed without code changes to that test.
+
+## Browse-position continuation — 30 October 2026 (Asia/Saigon)
+
+Local source changes add persistent per-collection browse locations in `workspaceV1.browseLocations`: selected asset, search, scroll, and the current folder for validating the All assets location. `selectCategory` captures the outgoing location before changing filters and restores the incoming selection/scroll. A separate current-category value handles the Favorites checkbox changing before its handler runs; request tracking prevents stale asynchronous category refreshes from replacing the latest selection. Deleting the active custom category restores All assets through the same flow. The existing app-wide folder and view preference are retained.
+
+The Electron regression suite covers returning from Favorites, Append list and custom categories, checkbox navigation, reload while another collection is open, rapid switches, and clicking an already-active collection. These changes are local source work after published v1.5.2; no new release has been published for them.
+
+Validation on 30 October: `npm.cmd test` passed all 75 unit tests and both Electron suites. After the final active-collection adjustment, `node tests/run-electron.cjs` passed again, including all seven new browse-location checks. No native-editor or packaged rebuild was needed for this renderer-only change.
+
 ## Release continuation — 29 October 2026 (Asia/Saigon)
 
 The user authorized publishing the latest changes to GitHub. The v1.5.2 source, sequence implementation/tests, and continuity documents are being included in the release commit. The sections below retain the original handoff snapshot; their descriptions of uncommitted work and earlier environment failures are historical.

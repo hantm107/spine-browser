@@ -2,6 +2,44 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {buildMerge,dependencySet,compareVersions,imagePaths,canonicalizeDefaultAttachments,verifySavedAttachmentKeys}=require('../import-merge');
 const base=()=>({skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[],skins:[{name:'default',attachments:{}}],animations:{idle:{bones:{root:{rotate:[{value:2}]}}}}});
+
+test('multiple animations share one dependency graph and preserve independent keys and Main animations',()=>{
+  const input=source(),main=base();
+  delete input.animations.attack.slots.hidden;input.slots[1].color='ffffff00';
+  input.skins[0].attachments.body.recover={path:'recovery/head',width:20,height:20};
+  input.events.recovery={audio:'recover.wav'};
+  input.animations.recover={bones:{target:{translate:[{time:.2,x:12}]}},slots:{body:{attachment:[{time:.1,name:'recover'},{time:.4}]}},events:[{time:.3,name:'recovery'}]};
+  const before=structuredClone(input),mainBefore=structuredClone(main);
+  for(const createSkins of [true,false]){
+    const r=buildMerge(main,input,{animations:['attack','recover'],prefix:'Batch',imageFolder:'Batch',createSkins});
+    assert.deepEqual(r.animationNames,['Batch_attack','Batch_recover']);assert.equal(r.stats.animations,2);
+    assert.deepEqual(Object.keys(r.data.animations),['idle','Batch_attack','Batch_recover']);assert.deepEqual(r.data.animations.idle,mainBefore.animations.idle);
+    assert.equal(r.data.bones.filter(b=>b.name==='Batch').length,1);assert.equal(r.data.bones.some(b=>b.name==='Batch2'),false);
+    assert.equal(r.data.bones.filter(b=>b.name==='Batch_body').length,1);assert.equal(r.data.bones.some(b=>b.name==='Batch_unused'),false);
+    assert.equal(r.files.filter(f=>f.source==='blink').length,1);assert.equal(r.files.filter(f=>f.source==='recovery/head').length,createSkins?2:1);
+    assert.deepEqual(r.data.animations.Batch_attack.bones.Batch_body.rotate,[{value:30}]);
+    assert.deepEqual(r.data.animations.Batch_recover.bones.Batch_target.translate,[{time:.2,x:12}]);
+    assert.deepEqual(r.data.animations.Batch_recover.events,[{time:.3,name:'Batch_recovery'}]);
+    assert.deepEqual(r.audio,[{source:'recover.wav',destination:'Batch_recover.wav'}]);
+    assert.equal(r.rows.filter(row=>row.type==='animation').length,2);
+    for(const name of r.animationNames)verifySavedAttachmentKeys(r.data,r.data,name,r.group);
+  }
+  assert.deepEqual(input,before);assert.deepEqual(main,mainBefore);
+});
+
+test('batch animation names are editable and empty selections, unknown clips and collisions are rejected',()=>{
+  const options={animations:['attack','unused']};
+  const r=buildMerge(base(),source(),{...options,overrides:{'animation:attack':'New attack','animation:unused':'New idle'}});
+  assert.deepEqual(r.animationNames,['New attack','New idle']);
+  assert.throws(()=>buildMerge(base(),source(),{animations:[]}),/at least one/);
+  assert.throws(()=>buildMerge(base(),source(),{animations:'attack'}),/one or more/);
+  assert.throws(()=>buildMerge(base(),source(),{animations:['attack','absent']}),/Select an animation/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:attack':'idle'}}),/unique/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:attack':'same','animation:unused':'same'}}),/unique/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:unused':'  '}}),/nonempty/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,animationName:'one name'}),/mapping rows/);
+  const broken=source();broken.animations.unused.unknown={};assert.throws(()=>buildMerge(base(),broken,options),/Unsupported animation timeline/);
+});
 function source(){return {skeleton:{spine:'4.2.43'},bones:[{name:'root'},{name:'body',parent:'root'},{name:'target',parent:'root'},{name:'unused',parent:'root'}],slots:[{name:'body',bone:'body',attachment:'head'},{name:'hidden',bone:'unused',attachment:'unused'}],skins:[{name:'default',attachments:{body:{head:{width:20,height:20},blink:{width:20,height:20}},hidden:{unused:{}}}},{name:'red',attachments:{body:{head:{path:'red/head',width:20,height:20},blink:{path:'red/blink',width:20,height:20}}}}],ik:[{name:'aim',bones:['body'],target:'target'}],events:{hit:{int:1},unused:{}},animations:{attack:{bones:{body:{rotate:[{value:30}]}},slots:{body:{attachment:[{name:'blink',time:0.5}]},hidden:{attachment:[{name:null}]}},events:[{name:'hit',time:.2}]},unused:{bones:{unused:{rotate:[{value:4}]}}}}};}
 test('copies only required dependencies, adds offset parent, and leaves Main keys intact',()=>{
   const main=base(),input=source(),snapshot=structuredClone(main),r=buildMerge(main,input,{animation:'attack'});

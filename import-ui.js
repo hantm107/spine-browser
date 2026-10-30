@@ -1,6 +1,6 @@
 (function(){
   const $=id=>document.getElementById(id), api=window.spineImport;
-  const state={main:null,import:null,plan:null,result:null,overrides:{},sequenceRenames:{},sequenceGroups:[],busy:false};
+  const state={main:null,import:null,plan:null,result:null,overrides:{},sequenceRenames:{},sequenceGroups:[],selectedAnimations:[],selectionConfirmed:false,previewReady:false,busy:false};
   let appendSources=[],appendListRequest=0,takingAppendSource=false,imageFolderEdited=false;
   const appendKey=file=>(file||'').replace(/\\/g,'/').toLowerCase();
   const views=Object.fromEntries(['main','import','combined'].map(role=>[role,window.createImportPreview($(role+'Preview'),$(role+'PreviewStatus'))]));
@@ -46,11 +46,16 @@
   }
   function update(){
     const ready=!!(state.main&&state.import);
-    $('review').disabled=!ready||state.busy;$('swap').disabled=!ready||state.busy;
-    $('previewResult').disabled=!state.plan||state.busy;$('save').disabled=!state.plan||state.busy;
+    $('review').disabled=!ready||!state.selectionConfirmed||!state.selectedAnimations.length||state.busy;$('swap').disabled=!ready||state.busy;
+    $('previewResult').disabled=!state.plan||state.busy;$('save').disabled=!state.plan||!state.previewReady||state.busy;
     for(const role of ['main','import'])for(const key of ['Skeleton','Animation','Skin'])$(role+key).disabled=!state[role]||state.busy;
     for(const id of ['chooseMain','chooseImport','chooseCli','cliPath','editorVersion','animationName','find','replace','matchCase','regex','importPrefix','createSkins','appendToMain'])$(id).disabled=state.busy;
     $('imageFolder').disabled=state.busy;
+    $('animationName').disabled=state.busy||state.selectedAnimations.length!==1;
+    $('animationChecklist').querySelectorAll('input').forEach(input=>input.disabled=state.busy);
+    for(const id of ['selectAllAnimations','clearAnimations'])$(id).disabled=state.busy||!state.import;
+    $('animationSelectionCount').textContent=`${state.selectedAnimations.length} selected`;
+    $('combinedAnimation').disabled=state.busy||!state.plan;
     const appendChoice=appendSources.find(r=>r.fullPath===$('appendSource').value);
     $('appendSource').disabled=state.busy;
     $('useAppendSource').disabled=state.busy||!appendChoice||appendChoice.unavailable||!appendChoice.imagesAvailable;
@@ -63,13 +68,53 @@
     document.querySelectorAll('.choices button,.choices select').forEach(e=>e.disabled=state.busy);
     document.body.classList.toggle('busy',state.busy);
     optionHints();
+    updateWorkflow();
   }
-  function invalidate(){revision++;state.plan=null;views.combined.dispose();$('reviewSummary').textContent='Review the import to validate the current settings.';$('previewResult').disabled=true;$('save').disabled=true;update();}
+  function updateWorkflow(){
+    const projects=!!(state.main&&state.import),selection=projects&&state.selectionConfirmed&&!!state.selectedAnimations.length,review=!!(state.plan||state.result),preview=state.previewReady||!!state.result;
+    const enabled=[true,projects,selection,review,preview],complete=[projects,selection,review,preview,!!state.result];
+    const current=complete.findIndex(done=>!done)+1||5;
+    const lockedHints=['','Open both projects first','Complete step 2 first','Complete step 3 first','Complete step 4 first'];
+    for(let n=1;n<=5;n++){
+      const section=$('step'+n),content=$('step'+n+'Content'),locked=!enabled[n-1],button=document.querySelector(`.workflow-progress [data-step="${n}"]`);
+      section.classList.toggle('is-locked',locked);section.classList.toggle('is-complete',complete[n-1]);section.classList.toggle('is-current',n===current);
+      content.disabled=locked||state.busy;content.inert=locked||state.busy;
+      $('step'+n+'State').textContent=locked?lockedHints[n-1]:complete[n-1]?(n===5?'Saved':'Complete'):state.busy?'Working…':'Current step';
+      button.disabled=locked||state.busy;button.classList.toggle('is-complete',complete[n-1]);
+      if(n===current)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');
+    }
+    $('goToAnimations').disabled=!projects||state.busy;
+    $('continueToSettings').disabled=!projects||!state.selectedAnimations.length||state.busy;
+    $('goToPreview').disabled=!state.plan||state.busy;$('goToSave').disabled=!state.previewReady||state.busy;
+    $('animationEmpty').hidden=!!state.import;
+    $('reviewNextHint').textContent=state.plan?'Review complete. Check the mappings, or continue to preview.':'Review the names and dependencies to unlock the preview.';
+    const output=state.plan||state.result,names=output?.animationNames||[];
+    $('saveSummary').textContent=output?`${names.length||1} animation${names.length===1?'':'s'} · ${$('appendToMain').checked?'New project beside Main':'Separate output folder'}${output.imageFolder?' · images/'+output.imageFolder+'/':''}.`:'Preview the reviewed merge before saving.';
+    $('combinedPlay').disabled=!state.previewReady||state.busy;
+  }
+  function goToStep(n){const button=document.querySelector(`.workflow-progress [data-step="${n}"]`);if(button.disabled)return;$('step'+n).scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});$('step'+n+'Title').focus({preventScroll:true});}
+  document.querySelectorAll('.workflow-progress button').forEach(button=>button.onclick=()=>goToStep(Number(button.dataset.step)));
+  $('goToAnimations').onclick=()=>goToStep(2);
+  $('continueToSettings').onclick=()=>{if(!state.main||!state.import||!state.selectedAnimations.length||state.busy)return;state.selectionConfirmed=true;update();goToStep(3);};
+  $('goToPreview').onclick=()=>goToStep(4);$('goToSave').onclick=()=>goToStep(5);
+  function invalidate(){revision++;state.plan=null;state.previewReady=false;state.result=null;$('saved').hidden=true;views.combined.dispose();$('combinedAnimationLabel').hidden=true;$('reviewSummary').textContent='Review the import to validate the current settings.';update();}
+  function selectionChanged(){state.selectionConfirmed=false;resetSequences();state.overrides={};invalidate();}
   async function work(action){if(state.busy)return;state.busy=true;update();try{return await action();}catch(error){status(error.message,true);}finally{state.busy=false;update();consumeAppendSource();}}
   function fill(select,values){select.replaceChildren(...values.map(value=>new Option(value,value)));}
+  function availableAnimations(){return state.import?.skeletons.find(s=>s.name===$('importSkeleton').value)?.animations||[];}
+  function renderAnimationSelection(){
+    $('animationSelection').hidden=!state.import;
+    $('animationChecklist').replaceChildren(...availableAnimations().map(name=>{
+      const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=name;input.checked=state.selectedAnimations.includes(name);
+      input.onchange=()=>{state.selectedAnimations=[...$('animationChecklist').querySelectorAll('input:checked')].map(item=>item.value);if(state.selectedAnimations.length===1){$('importAnimation').value=state.selectedAnimations[0];views.import.choose(state.selectedAnimations[0]);}selectionChanged();};
+      label.append(input,document.createTextNode(name));return label;
+    }));update();
+  }
+  $('selectAllAnimations').onclick=()=>{state.selectedAnimations=[...availableAnimations()];selectionChanged();renderAnimationSelection();};
+  $('clearAnimations').onclick=()=>{state.selectedAnimations=[];selectionChanged();renderAnimationSelection();};
   function resetSequences(){state.sequenceRenames={};state.sequenceGroups=[];$('sequencePanel').hidden=true;$('sequenceGroups').replaceChildren();}
   function renderSequences(groups){
-    state.sequenceGroups=groups;$('sequencePanel').hidden=false;$('sequenceSummary').textContent=groups.length?`${groups.length} sequence group${groups.length===1?'':'s'} detected in the selected animation's required images.`:'No image sequence groups were detected in the selected animation.';
+    state.sequenceGroups=groups;$('sequencePanel').hidden=false;$('sequenceSummary').textContent=groups.length?`${groups.length} sequence group${groups.length===1?'':'s'} detected in the selected animations' required images.`:'No image sequence groups were detected in the selected animations.';
     const cards=groups.map(group=>{
       const card=document.createElement('article');card.className='sequence-card';card.dataset.group=group.id;
       const heading=document.createElement('h4');heading.textContent=`${group.prefix}{number}${group.suffix} · ${group.frames.length} images${group.useCount>group.frames.length?' · '+group.slotCount+' slots share these images':''}`;
@@ -102,8 +147,9 @@
     try{const assets=await api.preview(project.id,$(role+'Skeleton').value);await views[role].show(assets,$(role+'Animation').value,$(role+'Skin').value);$(role+'Play').disabled=false;}
     catch(error){$(role+'PreviewStatus').textContent='Preview unavailable: '+error.message;}
   }
-  function animations(role){const project=state[role],skeleton=project?.skeletons.find(s=>s.name===$(role+'Skeleton').value);fill($(role+'Animation'),skeleton?.animations||[]);fill($(role+'Skin'),skeleton?.skins||[]);if(role==='main'&&skeleton?.animations.includes('idle'))$(role+'Animation').value='idle';}
+  function animations(role){const project=state[role],skeleton=project?.skeletons.find(s=>s.name===$(role+'Skeleton').value);fill($(role+'Animation'),skeleton?.animations||[]);fill($(role+'Skin'),skeleton?.skins||[]);if(role==='main'&&skeleton?.animations.includes('idle'))$(role+'Animation').value='idle';if(role==='import'){state.selectedAnimations=skeleton?.animations.length?[$('importAnimation').value]:[];renderAnimationSelection();}}
   async function accept(role,project){
+    state.selectionConfirmed=false;
     resetSequences();
     state[role]=project;state.overrides={};$('mappingTable').hidden=true;invalidate();
     $(role+'Path').textContent=project.project;$(role+'Version').textContent=`Spine ${project.version} · ${project.skeletons.length} skeleton${project.skeletons.length===1?'':'s'}`;
@@ -112,8 +158,10 @@
     update();await preview(role);
   }
   async function open(role,file){
+    state.selectionConfirmed=false;
     resetSequences();
     state[role]=null;views[role].dispose();$(role+'Path').textContent=file;$(role+'Version').textContent='';invalidate();
+    if(role==='import'){state.selectedAnimations=[];renderAnimationSelection();}
     const project=await api.inspect(file,settings());
     if(project.id){await accept(role,project);return;}
     const choices=$(role+'Choices');choices.replaceChildren();choices.className='choices';
@@ -129,8 +177,8 @@
   }
   for(const role of ['main','import']){
     $('choose'+(role==='main'?'Main':'Import')).onclick=()=>work(async()=>{const folder=await api.selectProject();if(folder)await open(role,folder);});
-    $(role+'Skeleton').onchange=()=>work(async()=>{resetSequences();state.overrides={};invalidate();animations(role);await preview(role);});
-    $(role+'Animation').onchange=()=>{if(role==='import'){resetSequences();state.overrides={};invalidate();}views[role].choose($(role+'Animation').value);};
+    $(role+'Skeleton').onchange=()=>work(async()=>{selectionChanged();animations(role);await preview(role);});
+    $(role+'Animation').onchange=()=>{if(role==='import'&&state.selectedAnimations.length===1){state.selectedAnimations=[$('importAnimation').value];selectionChanged();renderAnimationSelection();}views[role].choose($(role+'Animation').value);};
     $(role+'Play').onclick=()=>views[role].toggle();
   }
   $('chooseCli').onclick=()=>work(async()=>{const file=await api.selectCli();if(file)$('cliPath').value=file;});
@@ -147,9 +195,11 @@
   $('imageFolder').oninput=()=>{imageFolderEdited=true;state.overrides={};invalidate();};
   $('swap').onclick=()=>work(async()=>{const main=state.main,source=state.import;await accept('main',source);await accept('import',main);});
   $('review').onclick=()=>work(async()=>{
+    if(!state.selectionConfirmed||!state.main||!state.import||!state.selectedAnimations.length)return;
     invalidate();if(!$('imageFolder').value.trim())throw Error('Enter a name for the required images subfolder.');
-    const plan=await api.plan({mainId:state.main.id,importId:state.import.id,mainSkeleton:$('mainSkeleton').value,importSkeleton:$('importSkeleton').value,animation:$('importAnimation').value,animationName:$('animationName').value,prefix:$('importPrefix').value.trim(),useImageFolder:true,imageFolder:$('imageFolder').value.trim(),createSkins:$('createSkins').checked,sourceSkin:$('importSkin').value||'default',appendToMain:$('appendToMain').checked,rename:{find:$('find').value,replace:$('replace').value,regex:$('regex').checked,matchCase:$('matchCase').checked},overrides:state.overrides,sequenceRenames:state.sequenceRenames,replaceSequenceNames:true});
-    state.plan=plan;$('reviewSummary').textContent=`${plan.animationName} · ${plan.group} · ${plan.stats.bones} bones · ${plan.stats.slots} slots · ${plan.stats.images} images in images/${plan.imageFolder?plan.imageFolder+'/':''} · ${plan.stats.skins} new skins${plan.createSkins===false?' (Main default attachments)':''}${plan.appendToMain?' · Save directly to '+plan.mainFolder:''}`;
+    const plan=await api.plan({mainId:state.main.id,importId:state.import.id,mainSkeleton:$('mainSkeleton').value,importSkeleton:$('importSkeleton').value,animation:state.selectedAnimations[0],animations:state.selectedAnimations,animationName:state.selectedAnimations.length===1?$('animationName').value:'',prefix:$('importPrefix').value.trim(),useImageFolder:true,imageFolder:$('imageFolder').value.trim(),createSkins:$('createSkins').checked,sourceSkin:$('importSkin').value||'default',appendToMain:$('appendToMain').checked,rename:{find:$('find').value,replace:$('replace').value,regex:$('regex').checked,matchCase:$('matchCase').checked},overrides:state.overrides,sequenceRenames:state.sequenceRenames,replaceSequenceNames:true});
+    state.plan=plan;$('reviewSummary').textContent=`${(plan.animationNames||[plan.animationName]).join(', ')} · ${plan.group} · ${plan.stats.bones} bones · ${plan.stats.slots} slots · ${plan.stats.images} images in images/${plan.imageFolder?plan.imageFolder+'/':''} · ${plan.stats.skins} new skins${plan.createSkins===false?' (Main default attachments)':''}${plan.appendToMain?' · Save directly to '+plan.mainFolder:''}`;
+    fill($('combinedAnimation'),plan.animationNames||[plan.animationName]);$('combinedAnimationLabel').hidden=false;
     fill($('combinedSkin'),['default',...plan.skins]);$('combinedSkin').value=plan.previewSkin||'default';$('combinedSkin').disabled=false;
     $('warnings').replaceChildren(...plan.warnings.map(text=>{const li=document.createElement('li');li.textContent=text;return li;}));
     state.sequenceRenames=plan.sequenceRenames||state.sequenceRenames;renderSequences(plan.sequenceGroups||[]);
@@ -160,9 +210,10 @@
       input.oninput=()=>{state.overrides[row.id]=input.value;invalidate();$('mappingHint').hidden=false;};result.append(input);tr.append(type,original,result);return tr;
     }));$('mappingTable').hidden=false;$('mappingHint').hidden=true;status('Import reviewed. Preview the merge or create the new project.');
   });
-  $('previewResult').onclick=()=>work(async()=>{const assets=await api.previewPlan(state.plan.id);await views.combined.show(assets,assets.animation,$('combinedSkin').value);$('combinedPlay').disabled=false;status('Combined preview ready.');});
+  $('combinedAnimation').onchange=()=>views.combined.choose($('combinedAnimation').value);
+  $('previewResult').onclick=()=>work(async()=>{if(!state.plan)return;state.previewReady=false;update();const assets=await api.previewPlan(state.plan.id);await views.combined.show(assets,$('combinedAnimation').value||assets.animation,$('combinedSkin').value);if(!views.combined.inspect()?.bones)throw Error('The preview did not finish loading. Try Preview merge again.');state.previewReady=true;status('Preview ready. Continue to step 5 to save your new project.');});
   $('combinedPlay').onclick=()=>views.combined.toggle();
-  $('save').onclick=()=>work(async()=>{const result=await api.save(state.plan.id);if(!result)return;state.result=result;state.plan=null;$('saved').hidden=false;$('savedMessage').textContent=`Created ${result.project} with animation ${result.animationName}.${result.previewSkin&&result.previewSkin!=='default'?' In Spine, select skin '+result.previewSkin+' to display the imported artwork.':''}`;status('New project saved and attachment keys verified.');});
+  $('save').onclick=()=>work(async()=>{if(!state.plan||!state.previewReady)return;const result=await api.save(state.plan.id);if(!result)return;state.result=result;state.plan=null;$('saved').hidden=false;const names=result.animationNames||[result.animationName];$('savedMessage').textContent=`Created ${result.project} with ${names.length===1?'animation':'animations'} ${names.join(', ')}.${result.previewSkin&&result.previewSkin!=='default'?' In Spine, select skin '+result.previewSkin+' to display the imported artwork.':''}`;status('New project saved and attachment keys verified for every imported animation.');});
   $('openResult').onclick=()=>window.spineApi.openInSpine(state.result.project);
   $('revealResult').onclick=()=>window.spineApi.openInExplorer(state.result.project);
   $('useResult').onclick=()=>work(()=>open('main',state.result.project));

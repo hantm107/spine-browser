@@ -74,6 +74,14 @@ const recentFolders = document.getElementById('recentFolders');
 searchInput.value = workspace.search || '';
 favoritesOnly.checked = !!workspace.favoritesOnly;
 libraryView.value = workspace.view === 'grid' ? 'grid' : 'list';
+workspace.browseLocations ||= {};
+let browsingCategory = activeCategory(), categoryRequest = 0;
+function rememberBrowseLocation() {
+  workspace.browseLocations[browsingCategory] = {
+    folder:currentFolder, selected:(navigationProject || selectedProject)?.id || null,
+    search:searchInput.value, scroll:projectList.scrollTop,
+  };
+}
 function saveWorkspace() {
   workspace.folder=currentFolder || workspace.folder; workspace.selected=selectedProject?.id || null;
   workspace.search=searchInput.value;workspace.favoritesOnly=favoritesOnly.checked;workspace.view=libraryView.value;
@@ -412,7 +420,7 @@ favoritesOnly.onchange=()=>selectCategory(favoritesOnly.checked?'favorites':'all
 libraryView.onchange=()=>{cancelNavigation();renderProjectList(filteredProjects());saveWorkspace();};
 recentFolders.onchange=()=>{if(recentFolders.value)chooseFolder(recentFolders.value);};
 document.getElementById('rescanBtn').onclick=()=>{if(currentFolder)chooseFolder(currentFolder);};
-window.addEventListener('beforeunload',saveWorkspace);
+window.addEventListener('beforeunload',()=>{rememberBrowseLocation();saveWorkspace();});
 projectList.tabIndex = 0;
 projectList.setAttribute('aria-label', 'Files. Use arrow keys to browse.');
 document.addEventListener('keydown', event => {

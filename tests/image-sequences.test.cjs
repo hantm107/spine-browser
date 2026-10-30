@@ -5,6 +5,16 @@ const main=()=>({skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[],skins:
 function source(){return {skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[{name:'art',bone:'root',attachment:'frame2'}],skins:[{name:'default',attachments:{art:Object.fromEntries([10,2,8,4].map(n=>['frame'+n,{path:'fx/bolt_'+String(n).padStart(3,'0'),width:20,height:20}]))}}],animations:{flash:{slots:{art:{attachment:[{name:'frame10'},{time:.1,name:'frame2'},{time:.2,name:'frame8'},{time:.3,name:'frame4'},{time:.4}]}}}}};}
 const options={animation:'flash',prefix:'Fx',imageFolder:'Effects/Fx',createSkins:false};
 const rule={prefix:'Thunder_',suffix:'_hit',start:1,padding:3};
+
+test('batch clips share renamed images and every attachment timeline follows the same names',()=>{
+  const input=source();input.animations.reverse=structuredClone(input.animations.flash);
+  input.animations.reverse.slots.art.attachment.reverse();
+  const r=buildMerge(main(),input,{...options,animation:undefined,animations:['flash','reverse'],replaceSequenceNames:true});
+  assert.equal(r.files.length,4);assert.equal(r.sequenceGroups.length,1);
+  const forward=r.data.animations.Fx_flash.slots.Fx_art.attachment,backward=r.data.animations.Fx_reverse.slots.Fx_art.attachment;
+  assert.deepEqual(backward.map(k=>k.name),forward.map(k=>k.name).reverse());
+  for(const name of r.animationNames)verifySavedAttachmentKeys(r.data,r.data,name,r.group);
+});
 test('detects numeric groups with gaps, stable ordering, and separate folder/skin boundaries',()=>{
   const files=['a/bolt_10','a/bolt_2','a/bolt_8','a/bolt_4','b/bolt_2','b/bolt_4'].map((source,i)=>({source,destination:'old'+i,attachment:'a'+i,skin:'default'}));
   files.push({source:'a/bolt_4',destination:'variant4',attachment:'red4',skin:'red'},{source:'a/bolt_8',destination:'variant8',attachment:'red8',skin:'red'});

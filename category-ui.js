@@ -2,11 +2,25 @@
 function activeCategory(){return favoritesOnly.checked?'favorites':workspace.category==='append'?'append':workspace.categories.find(c=>c.id===workspace.category)?.id || 'all';}
 function activeBookmarkMap(){const id=activeCategory();return id==='favorites'?workspace.favorites:id==='append'?appendBookmarks:workspace.categories.find(c=>c.id===id)?.assets;}
 async function selectCategory(id){
+  const previous=browsingCategory,request=++categoryRequest;
+  if(previous!==id)rememberBrowseLocation();
+  cancelNavigation();
+  browsingCategory=id;
   workspace.category=id;favoritesOnly.checked=id==='favorites';
+  const saved=workspace.browseLocations[id];
+  const location=previous!==id&&saved&&(id!=='all'||saved.folder===currentFolder)?saved:null;
+  if(previous!==id)searchInput.value=location?.search||'';
   saveWorkspace();renderCategories();
   if(id==='append')await refreshAppendList();
   if(id!=='all')await refreshFavorites();
-  refreshProjectList();saveWorkspace();
+  if(request!==categoryRequest)return;
+  updateSummary();
+  const projects=filteredProjects();
+  const project=projects.find(p=>p.id===(location?.selected||selectedProject?.id))||projects[0]||null;
+  const preview=selectProject(project);
+  projectList.scrollTop=previous===id?projectList.scrollTop:location?.scroll||0;
+  saveWorkspace();
+  await preview;
 }
 function renderCategories(){
   const list=document.getElementById('categoryList');list.replaceChildren();
@@ -25,7 +39,7 @@ function renderCategories(){
 }
 function createCategory(name){const category=CategoryStore.create(workspace.categories,name,crypto.randomUUID());saveWorkspace();renderCategories();renderProjectList(filteredProjects());return category;}
 function assignCategory(id,project,enabled){CategoryStore.assign(workspace.categories,id,bookmark(project),enabled);saveWorkspace();renderCategories();refreshProjectList();}
-function removeCategory(id){workspace.categories=CategoryStore.remove(workspace.categories,id);if(workspace.category===id){workspace.category='all';favoritesOnly.checked=false;}saveWorkspace();renderCategories();refreshProjectList();}
+function removeCategory(id){if(browsingCategory===id)selectCategory('all');workspace.categories=CategoryStore.remove(workspace.categories,id);delete workspace.browseLocations[id];saveWorkspace();renderCategories();refreshProjectList();}
 function categoryDialog(title){
   let dialog=document.getElementById('categoryDialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='categoryDialog';document.body.append(dialog);}
   dialog.replaceChildren();const heading=document.createElement('h2');heading.id='categoryDialogTitle';heading.textContent=title;dialog.setAttribute('aria-labelledby',heading.id);dialog.append(heading);
