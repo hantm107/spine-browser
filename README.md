@@ -30,6 +30,8 @@ To combine animations, open **Import animation** and follow **Open projects → 
 
 Requires Node.js and npm.
 
+App source lives in `src/`, tests in `tests/`, bundled runtimes and licenses in `vendor/`, and the user guide in `docs/`.
+
 ```sh
 npm ci
 npm start

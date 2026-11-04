@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
-const { version } = require('./package.json');
+const { version } = require('../package.json');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');

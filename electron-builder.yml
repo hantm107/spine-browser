@@ -4,33 +4,11 @@ asar: true
 directories:
   output: dist
 files:
-  - main.js
-  - preload.js
-  - project-assets.js
-  - import-service.js
-  - import-merge.js
-  - image-sequences.js
-  - import.html
-  - import.css
-  - import-ui.js
-  - import-preview.js
-  - asset-groups.js
-  - append-list-store.js
-  - category-store.js
-  - category-ui.js
-  - runtime-catalog.js
-  - runtime-loader.js
-  - legacy-player.js
-  - blend-compatibility.js
-  - old-spine-decoder.js
-  - playback-controls.js
-  - renderer.js
-  - index.html
-  - style.css
+  - src/**/*
+  - vendor/**/*
   - package.json
   - README.md
   - LICENSE
-  - vendor/**/*
 win:
   target:
     - target: portable

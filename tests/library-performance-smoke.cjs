@@ -14,7 +14,7 @@ app.on('browser-window-created',(_event,win)=>{
  if(started)return;started=true;win.webContents.setBackgroundThrottling(false);
  win.webContents.once('did-finish-load',()=>run(win).then(()=>finish()).catch(finish));
 });
-require('../main.js');
+require('../src/main.js');
 async function run(win){
  const evaluate=code=>win.webContents.executeJavaScript(code),wait=ms=>new Promise(r=>setTimeout(r,ms));
  const frames=()=>evaluate('(async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);})()');

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {createAppendListStore}=require('../append-list-store');
+const {createAppendListStore}=require('../src/append-list-store');
 async function fixture(t){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-list-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
  const sources=[];

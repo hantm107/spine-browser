@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {decode,normalize32}=require('../old-spine-decoder');
+const {decode,normalize32}=require('../src/old-spine-decoder');
 const fixture=(series,extension)=>fs.readFileSync(path.join(__dirname,'fixtures',series,`spineboy-pro.${extension}`));
 
 test('2.x draw order recovers signed offsets from legacy converted JSON',()=>{

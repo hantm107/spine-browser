@@ -24,3 +24,8 @@ replay_pid*.log
 /藐熓㏞含奦/
 
 /snapshots/
+
+# Local assistant notes and historical audits
+/AGENTS.md
+/PROJECT_HANDOFF.md
+/SOURCE_AUDIT.md

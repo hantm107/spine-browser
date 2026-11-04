@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const os=require('node:os');
-const {resource,imageFile,normalizeExport,publishToMainFolder,freshImageSubfolder,binaryHeaderVersion,recoveryInput,recoveryEditorVersion}=require('../import-service');
+const {resource,imageFile,normalizeExport,publishToMainFolder,freshImageSubfolder,binaryHeaderVersion,recoveryInput,recoveryEditorVersion}=require('../src/import-service');
 
 test('legacy recovery uses the preview decoder and a supported editor without changing source metadata',async()=>{
   for(const series of ['2.0','2.1']){

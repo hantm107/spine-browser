@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const assets = require('../project-assets');
-const {groupAssets}=require('../asset-groups');
-const categories=require('../category-store');
+const assets = require('../src/project-assets');
+const {groupAssets}=require('../src/asset-groups');
+const categories=require('../src/category-store');
 test('categories support hundreds of distinct RGB colors and validate names',()=>{
   const list=[];
   assert.throws(()=>categories.create(list,'','empty'),/name/);
@@ -80,7 +80,7 @@ test('scans JSON skeletons, ignores application JSON and reports root folders co
 });
 
 test('discovers BOM-prefixed JSON exports for every supported runtime', async t => {
-  const series = Object.keys(require('../runtime-catalog'));
+  const series = Object.keys(require('../src/runtime-catalog'));
   const dir = await fixture(t, Object.fromEntries(series.map(version => [`${version}.JSON`, '\uFEFF' + json(`${version}.99`)])));
   const result = await assets.scanDirectory(dir);
   assert.equal(result.projects.length, series.length);

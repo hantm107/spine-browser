@@ -2,7 +2,7 @@
   "name": "spine-browser",
   "version": "1.6.1",
   "description": "Simple Spine project browser",
-  "main": "main.js",
+  "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "test:import-native": "node --test --test-concurrency=1 tests/import-native.test.cjs tests/sequence-native.test.cjs",

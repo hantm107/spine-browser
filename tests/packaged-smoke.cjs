@@ -13,7 +13,7 @@ let socket, child, timer;
 async function run(){
   const server=net.createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;await new Promise(r=>server.close(r));
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
-  child=spawn(path.join(root,'dist/Spine-Browser-'+require('../package.json').version+'-portable.exe'),[`--remote-debugging-port=${port}`,`--user-data-dir=${path.join(scratch,'profile')}`],{env,windowsHide:true,stdio:'ignore'});
+  child=spawn(process.env.SPINE_PACKAGED_EXE||path.join(root,'dist/Spine-Browser-'+require('../package.json').version+'-portable.exe'),[`--remote-debugging-port=${port}`,`--user-data-dir=${path.join(scratch,'profile')}`],{env,windowsHide:true,stdio:'ignore'});
   child.on('error',error=>{console.error(error);process.exitCode=1;});
   timer=setTimeout(()=>{console.error('Packaged app test timed out');process.exit(1);},90000);
   let page;
@@ -81,7 +81,7 @@ async function run(){
       state=await evaluate('({file:selectedProject?.fullPath,version:activePlayer?.skeleton?.data.version,time:playbackControls?.currentTime(),note:previewText.textContent,finite:activePlayer?.skeleton?.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})');
       if(state.time>0.1)break;await wait(50);
     }
-    const assets=require('../project-assets'),pair=await assets.findSkeletonAssetPair(state.file);
+    const assets=require('../src/project-assets'),pair=await assets.findSkeletonAssetPair(state.file);
     const compatibility=await assets.detectSpineFileCompatibility(pair.skeletonPath);
     assert.ok(state.version,JSON.stringify(state));
     assert.equal(compatibility.mismatch,false);assert.equal(state.version,compatibility.fileVersion);assert.ok(state.time>0.1);assert.equal(state.finite,true);

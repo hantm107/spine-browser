@@ -1,6 +1,6 @@
 const {app,BrowserWindow,ipcMain}=require('electron');
 const path=require('node:path'),fs=require('node:fs'),assert=require('node:assert/strict');
-const {buildMerge}=require('../import-merge');
+const {buildMerge}=require('../src/import-merge');
 const {pathToFileURL}=require('node:url');
 const scratch=process.env.SPINE_IMPORT_TEST_DIR,root=path.resolve(__dirname,'..');app.setPath('userData',path.join(scratch,'profile'));
 let win;const wait=ms=>new Promise(r=>setTimeout(r,ms)),checks=[];
@@ -42,15 +42,15 @@ app.whenReady().then(async()=>{
       }
       fs.writeFileSync(merged,JSON.stringify(previewData));return {skeletonPath:merged,atlasPath:atlas,animation:latestPlan.animationName};
     },
-    'detect-spine-version':(_,file)=>require('../project-assets').detectSpineFileCompatibility(file),
+    'detect-spine-version':(_,file)=>require('../src/project-assets').detectSpineFileCompatibility(file),
     'read-text-file':(_,file)=>fs.readFileSync(file,'utf8'),
     'read-data-uri':(_,file)=>`data:${file.endsWith('.png')?'image/png':'application/json'};base64,${fs.readFileSync(file).toString('base64')}`,
     'file-url-for-path':(_,file)=>pathToFileURL(file).href,
     'resolve-relative-resource':(_,base,name)=>path.resolve(path.dirname(base),name),
   }))ipcMain.handle(name,handler);
-  win=new BrowserWindow({width:1450,height:1050,show:false,webPreferences:{preload:path.join(root,'preload.js'),contextIsolation:true,nodeIntegration:false}});
+  win=new BrowserWindow({width:1450,height:1050,show:false,webPreferences:{preload:path.join(root,'src/preload.js'),contextIsolation:true,nodeIntegration:false}});
   win.webContents.on('console-message',(_event,level,message)=>{if(level>=3)console.error('Import UI:',message);});
-  await win.loadFile(path.join(root,'import.html'));win.showInactive();
+  await win.loadFile(path.join(root,'src/import.html'));win.showInactive();
   const initialSteps=await evaluate('[...document.querySelectorAll(".workflow-step")].map(s=>({locked:s.classList.contains("is-locked"),disabled:s.querySelector(".step-content").disabled,inert:s.querySelector(".step-content").inert}))');
   assert.deepEqual(initialSteps.map(s=>s.locked),[false,true,true,true,true]);assert.ok(initialSteps.slice(1).every(s=>s.disabled&&s.inert));
   assert.equal(await evaluate('document.getElementById("review").matches(":disabled")'),true);assert.equal(await evaluate('document.getElementById("save").matches(":disabled")'),true);checks.push('Only step 1 is available initially; later steps are grey, disabled and excluded from keyboard interaction');

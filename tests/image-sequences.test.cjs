@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {buildMerge,imagePaths,verifySavedAttachmentKeys}=require('../import-merge');
-const sequences=require('../image-sequences');
+const {buildMerge,imagePaths,verifySavedAttachmentKeys}=require('../src/import-merge');
+const sequences=require('../src/image-sequences');
 const main=()=>({skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[],skins:[{name:'default',attachments:{}}],animations:{idle:{}}});
 function source(){return {skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[{name:'art',bone:'root',attachment:'frame2'}],skins:[{name:'default',attachments:{art:Object.fromEntries([10,2,8,4].map(n=>['frame'+n,{path:'fx/bolt_'+String(n).padStart(3,'0'),width:20,height:20}]))}}],animations:{flash:{slots:{art:{attachment:[{name:'frame10'},{time:.1,name:'frame2'},{time:.2,name:'frame8'},{time:.3,name:'frame4'},{time:.4}]}}}}};}
 const options={animation:'flash',prefix:'Fx',imageFolder:'Effects/Fx',createSkins:false};

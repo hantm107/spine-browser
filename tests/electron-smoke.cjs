@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const electron = require('electron');
 const root = path.resolve(__dirname, '..');
 const fixtures = process.env.SPINE_TEST_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'spine-electron-test-'));
-const appRequire = createRequire(path.join(root, 'main.js'));
+const appRequire = createRequire(path.join(root, 'src/main.js'));
 electron.app.setPath('userData', path.join(fixtures, 'profile'));
 let win, completed = false, aboutMessage;
 const failures = [], checks = [];
@@ -70,11 +70,11 @@ const actualElectron = { ...electron, dialog: { ...electron.dialog,
   }
   static getAllWindows() { return electron.BrowserWindow.getAllWindows(); }
 } };
-vm.runInNewContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), {
+vm.runInNewContext(fs.readFileSync(path.join(root, 'src/main.js'), 'utf8'), {
   require: name => name === 'electron' ? actualElectron : name === 'node:child_process' ? {
     spawn() { throw new Error('Preview must never launch external processes'); },
-  } : appRequire(name), __dirname: root, console, process,
-}, { filename: path.join(root, 'main.js') });
+  } : appRequire(name), __dirname: path.join(root, 'src'), console, process,
+}, { filename: path.join(root, 'src/main.js') });
 
 async function run() {
   const help = electron.Menu.getApplicationMenu().items.find(item => item.role === 'help');
@@ -233,7 +233,7 @@ async function run() {
   await check('unsupported minor version is explained', `({title:previewTitle.textContent,message:previewText.textContent,player:!!activePlayer})`, r => { assert.equal(r.title, 'Unsupported Spine version'); assert.match(r.message, /4.4.1/); assert.equal(r.player, false); });
   // Exercise a genuine overlap with delayed IPC resolution.
   electron.ipcMain.removeHandler('resolve-spine-assets');
-  const assets = require('../project-assets');
+  const assets = require('../src/project-assets');
   electron.ipcMain.handle('resolve-spine-assets', async (_, file) => { if (file === modernFile) await wait(120); return assets.findSkeletonAssetPair(file); });
   await evaluate(`(async()=>{const first=selectProject(${project(modernFile, 'A')});await selectProject(${project(secondFile, 'B')});await first;})()`);
   await wait(250);

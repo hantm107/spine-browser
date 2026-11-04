@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {buildMerge,dependencySet,compareVersions,imagePaths,canonicalizeDefaultAttachments,verifySavedAttachmentKeys,verifySavedBones}=require('../import-merge');
+const {buildMerge,dependencySet,compareVersions,imagePaths,canonicalizeDefaultAttachments,verifySavedAttachmentKeys,verifySavedBones}=require('../src/import-merge');
 const base=()=>({skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[],skins:[{name:'default',attachments:{}}],animations:{idle:{bones:{root:{rotate:[{value:2}]}}}}});
 
 test('batch animations have separate colored rigs and preserve independent keys and Main animations',()=>{

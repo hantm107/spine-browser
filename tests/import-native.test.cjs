@@ -2,7 +2,7 @@
 // editor import/export path; runtime-only JSON previews cannot catch renames.
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {createImportService,runSpine}=require('../import-service');
+const {createImportService,runSpine}=require('../src/import-service');
 const cli=process.env.SPINE_NATIVE_IMPORT_CLI,version=process.env.SPINE_NATIVE_IMPORT_VERSION||'4.2.43';
 
 test('legacy JSON and custom-header binary recovery bridge into a modern Main project',{skip:!cli,timeout:180000},async t=>{

@@ -1,7 +1,7 @@
 // Opt-in verification through the actual editor, including named-skin and native
 // sequence references which cannot be checked by filename-only assertions.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
-const {createImportService,runSpine}=require('../import-service');
+const {createImportService,runSpine}=require('../src/import-service');
 const cli=process.env.SPINE_NATIVE_IMPORT_CLI,version=process.env.SPINE_NATIVE_IMPORT_VERSION||'4.2.43';
 
 test('batch import saves separate colored rigs and shared sequence images in both skin modes',{skip:!cli,timeout:240000},async t=>{
