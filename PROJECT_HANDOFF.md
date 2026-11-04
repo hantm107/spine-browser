@@ -1,5 +1,11 @@
 # Spine Browser — project handoff
 
+## Short GitHub README and continued test branch — 4 November 2026 (Asia/Saigon)
+
+After v1.6.1 was published, the user requested a test branch for further work and a shorter README on GitHub. Active development continues on **`test/continue-v1.6.1-20261104`**, created from the v1.6.1 release. The README was reduced from 3,184 words to about 300, covering download, features, quick start, development commands and licensing. Detailed browsing/import/skin/image-sequence instructions are now linked in **`docs/USER_GUIDE.md`**; repeated version history and local snapshot notes were removed from user-facing documentation.
+
+This is a documentation-only update intended for GitHub's default branch, with the same commit retained on the test branch. Relative documentation links and Markdown fences were checked. Application code, package version, published v1.6.1 tag and executable are unchanged; no new build or application test run is needed. The original README is preserved locally in `.temp/README-before-shortening-20261104.md`.
+
 ## Stable v1.6.1 release preparation — 4 November 2026 (Asia/Saigon)
 
 The user confirmed the importer and parent-color behavior work, then explicitly authorized releasing this version on GitHub. The tested **1.5.3-test.4** implementation is promoted to **1.6.1**, following the already published v1.6.0. Application implementation is unchanged from the accepted test build; the package version and release documentation were updated. The release includes all current importer fixes, large-library rendering improvements and their tests. Earlier executable builds, ignored local examples/diagnostics, rollback branches and the pre-rollback stash remain preserved. Private source-project paths were removed from this public handoff; an unredacted local backup and pre-release patch remain in ignored diagnostics.
