@@ -68,12 +68,45 @@ async function refreshFavorites() {
 }
 let currentFolder = '', playbackControls = null, thumbnailTimer = null;
 const thumbnailCache = new Map();
+const projectCardCache = new Map();
 const favoritesOnly = document.getElementById('favoritesOnly');
 const libraryView = document.getElementById('libraryView');
 const recentFolders = document.getElementById('recentFolders');
 searchInput.value = workspace.search || '';
 favoritesOnly.checked = !!workspace.favoritesOnly;
 libraryView.value = workspace.view === 'grid' ? 'grid' : 'list';
+workspace.browseLocations ||= {};
+let browsingCategory = activeCategory(), categoryRequest = 0;
+let browseScrollIntent = 0;
+projectList.addEventListener('wheel',()=>{browseScrollIntent++;},{passive:true});
+projectList.addEventListener('pointerdown',()=>{browseScrollIntent++;},{passive:true});
+function rememberBrowseLocation() {
+  const location = {
+    folder:currentFolder, selected:(navigationProject || selectedProject)?.id || null,
+    search:searchInput.value, scroll:projectList.scrollTop,
+  };
+  if(projectList.classList.contains('defer-offscreen')){
+    const list=projectList.getBoundingClientRect();
+    for(const card of projectList.children){
+      const rect=card.getBoundingClientRect();
+      if(card.dataset.id&&rect.bottom>list.top&&rect.top<list.bottom){location.anchor={id:card.dataset.id,offset:rect.top-list.top};break;}
+    }
+  }
+  workspace.browseLocations[browsingCategory] = location;
+}
+function restoreBrowseLocation(location,request) {
+  projectList.scrollTop=location?.scroll||0;
+  if(!location?.anchor||!projectList.classList.contains('defer-offscreen'))return;
+  const intent=browseScrollIntent,selected=selectedProject?.id,search=searchInput.value,view=libraryView.value;
+  const align=()=>{
+    if(request!==categoryRequest||intent!==browseScrollIntent||navigationProject||selected!==selectedProject?.id||search!==searchInput.value||view!==libraryView.value)return;
+    const card=projectCardCache.get(browsingCategory+'\n'+location.anchor.id)?.item;
+    if(card?.isConnected)projectList.scrollTop+=card.getBoundingClientRect().top-projectList.getBoundingClientRect().top-location.anchor.offset;
+  };
+  // Estimated offscreen heights may settle on the next paint. Keep the same
+  // visible asset in place, including when returning after an app restart.
+  align();requestAnimationFrame(()=>{align();requestAnimationFrame(align);});
+}
 function saveWorkspace() {
   workspace.folder=currentFolder || workspace.folder; workspace.selected=selectedProject?.id || null;
   workspace.search=searchInput.value;workspace.favoritesOnly=favoritesOnly.checked;workspace.view=libraryView.value;
@@ -181,18 +214,20 @@ window.captureSelectedThumbnail=async()=>{
 function renderProjectList(projects) {
   const scroll = projectList.scrollTop;
   projectList.classList.toggle('thumbnail-grid',libraryView.value==='grid');
+  projectList.classList.toggle('defer-offscreen',projects.length>100);
   thumbnailObserver?.disconnect();
-  const fragment = document.createDocumentFragment();
+  const cards = [], collection = activeCategory();
   for (const project of projects) {
-    const item = document.createElement('li');
+    const cacheKey=collection+'\n'+project.id;
+    const revision=JSON.stringify([project,!!workspace.favorites[project.id],!!appendRecord(project),workspace.categories.filter(c=>c.assets[project.id]).map(c=>[c.id,c.name,c.color])]);
+    let cached=projectCardCache.get(cacheKey),item=cached?.item;
+    if(!cached||cached.revision!==revision){
+    item = document.createElement('li');
     item.className = 'project-item';
-    const highlighted = (navigationProject || selectedProject)?.id === project.id;
-    item.classList.toggle('selected', highlighted);
-    if (highlighted) item.setAttribute('aria-current', 'true');
     item.dataset.id = project.id;
     const name = document.createElement('div'), folder = document.createElement('div');
     name.className = 'project-name'; folder.className = 'project-folder';
-    name.textContent = project.fileName || project.name;
+    name.textContent = project.fileName || project.name;name.title=name.textContent;
     folder.textContent = project.folder;
     folder.title = project.fullPath || project.folder;
     if(project.unavailable){const unavailable=document.createElement('span');unavailable.className='unavailable';unavailable.textContent='Unavailable - '+(project.unavailableReason || 'File missing');folder.append(document.createElement('br'),unavailable);}
@@ -213,15 +248,27 @@ function renderProjectList(projects) {
     }
     item.append(image,text,actions);
     item.addEventListener('click', () => { selectProject(project); projectList.focus({preventScroll:true}); });
-    fragment.append(item);
+    cached={revision,item};
+    }
+    const highlighted = (navigationProject || selectedProject)?.id === project.id;
+    item.classList.toggle('selected',highlighted);
+    if(highlighted)item.setAttribute('aria-current','true');else item.removeAttribute('aria-current');
+    const thumbnail=item.querySelector('img'),key=project.thumbnailKey||project.id,uri=thumbnailCache.get(key);
+    if(uri){if(thumbnail.getAttribute('src')!==uri)thumbnail.src=uri;}
+    else {thumbnail.dataset.thumbnailKey=key;thumbnailObserver?.observe(thumbnail);}
+    projectCardCache.delete(cacheKey);projectCardCache.set(cacheKey,cached);
+    cards.push(item);
   }
   if (!projects.length) {
     const empty = document.createElement('li');
     empty.className = 'project-item';
     empty.textContent = activeCategory()==='append'?(searchInput.value.trim()?'No matching Append list sources':'Append list is empty. Add sources with Append +.'):activeBookmarkMap() ? (searchInput.value.trim()?'No matching bookmarks':'No bookmarked assets in this category') : allProjects.length ? 'No matching files' : 'No Spine files found';
-    fragment.append(empty);
+    cards.push(empty);
   }
-  projectList.replaceChildren(fragment);
+  // Ordinary selection updates just the highlight. Keeping each card mounted
+  // also preserves Chromium's measured offscreen sizes while browsing.
+  if(projectList.children.length!==cards.length||cards.some((card,i)=>projectList.children[i]!==card))projectList.replaceChildren(...cards);
+  while(projectCardCache.size>Math.max(2000,projects.length))projectCardCache.delete(projectCardCache.keys().next().value);
   projectList.scrollTop=scroll;
 }
 
@@ -360,6 +407,7 @@ async function selectProject(project) {
 
 async function chooseFolder(folderOverride) {
   const restoreSelection=workspace.selected, restoreScroll=workspace.scroll || 0;
+  const restoreLocation=workspace.browseLocations[browsingCategory],restoreCategoryRequest=categoryRequest;
   const request = ++scanRequest;
   chooseFolderBtn.disabled = true;
   try {
@@ -383,7 +431,8 @@ async function chooseFolder(folderOverride) {
     updateSummary();
     summary.title = warnings.map(w => `${w.path}: ${w.message}`).join('\n');
     await selectProject(filteredProjects().find(p=>p.id===restoreSelection) || filteredProjects()[0] || null);
-    projectList.scrollTop=restoreScroll;saveWorkspace();
+    if(restoreCategoryRequest===categoryRequest)restoreBrowseLocation(restoreLocation?.folder===folder?restoreLocation:{scroll:restoreScroll},restoreCategoryRequest);
+    saveWorkspace();
   } catch (error) {
     if (request !== scanRequest) return;
     allProjects = [];
@@ -412,7 +461,7 @@ favoritesOnly.onchange=()=>selectCategory(favoritesOnly.checked?'favorites':'all
 libraryView.onchange=()=>{cancelNavigation();renderProjectList(filteredProjects());saveWorkspace();};
 recentFolders.onchange=()=>{if(recentFolders.value)chooseFolder(recentFolders.value);};
 document.getElementById('rescanBtn').onclick=()=>{if(currentFolder)chooseFolder(currentFolder);};
-window.addEventListener('beforeunload',saveWorkspace);
+window.addEventListener('beforeunload',()=>{rememberBrowseLocation();saveWorkspace();});
 projectList.tabIndex = 0;
 projectList.setAttribute('aria-label', 'Files. Use arrow keys to browse.');
 document.addEventListener('keydown', event => {

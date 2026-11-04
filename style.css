@@ -384,6 +384,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .browser-controls .summary {font-size:11px;margin:0;text-align:right;}
 .file-browser .project-list {min-height:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));gap:8px;align-content:start;overflow-y:auto;padding-right:3px;}
 .file-browser .project-item {margin:0;padding:8px;gap:7px;}
+.file-browser .defer-offscreen .project-item {content-visibility:auto;contain-intrinsic-size:auto none auto 80px;}
+.file-browser .thumbnail-grid.defer-offscreen .project-item {contain-intrinsic-size:auto none auto 160px;}
 .file-browser .project-name {font-size:12px;}
 .file-browser .project-folder {font-size:10px;}
 .file-browser .asset-thumbnail {width:48px;height:44px;}

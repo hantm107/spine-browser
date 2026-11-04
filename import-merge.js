@@ -37,10 +37,10 @@ function canonicalizeDefaultAttachments(input) {
   data.skins=Array.isArray(input.skins)?skins:Object.fromEntries(skins.map(s=>[s.name,s.attachments]));
   return data;
 }
-function verifySavedAttachmentKeys(expected,actual,animationName,group) {
+function verifySavedAttachmentKeys(expected,actual,animationName,group,skinName) {
   const input=expected.animations?.[animationName],saved=actual.animations?.[animationName];
   if(!input||!saved)throw Error(`Saved animation missing: ${animationName}`);
-  const skins=skinsOf(actual);let namedKeys=0,totalKeys=0;
+  const skins=skinsOf(actual),visible=skinName===undefined?skins:skins.filter(s=>s.name==='default'||s.name===skinName);let namedKeys=0,totalKeys=0;
   for(const [slot,timelines]of entries(input.slots)){
     if(!timelines.attachment)continue;
     const keys=saved.slots?.[slot]?.attachment||[];
@@ -48,14 +48,27 @@ function verifySavedAttachmentKeys(expected,actual,animationName,group) {
     timelines.attachment.forEach((frame,i)=>{
       const other=keys[i];totalKeys++;
       if(Math.abs((frame.time||0)-(other.time||0))>.00011||(frame.name??null)!==(other.name??null))throw Error(`Saved attachment key changed at ${slot}, time ${frame.time||0}: expected ${frame.name??'null'}, got ${other.name??'null'}.`);
-      if(frame.name!=null){namedKeys++;if(!skins.some(s=>own(s.attachments?.[slot],frame.name)))throw Error(`Saved attachment key references missing attachment ${slot}/${frame.name}.`);}
+      if(frame.name!=null){namedKeys++;if(!visible.some(s=>own(s.attachments?.[slot],frame.name)))throw Error(`Saved attachment key references missing attachment ${slot}/${frame.name}${skinName===undefined?'':` in skin ${skinName}`}.`);}
     });
   }
-  for(const slot of expected.slots||[])if(group&&slot.name.startsWith(group+'_')){
+  const bones=new Set(Array.isArray(group)?group:group?[group]:[]);
+  for(const bone of expected.bones||[])if(bones.has(bone.parent))bones.add(bone.name);
+  for(const slot of expected.slots||[])if(bones.has(slot.bone)){
     const savedSlot=(actual.slots||[]).find(s=>s.name===slot.name);
     if(!savedSlot||(slot.attachment??null)!==(savedSlot.attachment??null))throw Error(`Saved setup attachment changed for ${slot.name}.`);
   }
   return {totalKeys,namedKeys};
+}
+function verifySavedBones(expected,actual,importGroups) {
+  const imported=new Set(importGroups),saved=new Map((actual.bones||[]).map(b=>[b.name,b]));let totalBones=0;
+  for(const bone of expected.bones||[]){
+    if(imported.has(bone.parent))imported.add(bone.name);
+    if(!imported.has(bone.name))continue;
+    const other=saved.get(bone.name);
+    if(!other||other.parent!==bone.parent||(other.color||'').toLowerCase()!==bone.color?.toLowerCase())throw Error(`Saved imported bone changed: ${bone.name}.`);
+    totalBones++;
+  }
+  return {groups:importGroups,totalBones};
 }
 function safeName(value) {
   const name = String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '');
@@ -67,6 +80,66 @@ function nextGroup(main, prefix = 'ImportedMain') {
   const names=new Set(main.bones.map(b=>b.name.toLowerCase()));let n=1;
   while(names.has((prefix+(n===1?'':n)).toLowerCase()))n++;
   return prefix+(n===1?'':n);
+}
+function nextBoneColor(main) {
+  const used=new Set(main.bones.map(b=>(b.color||'989898ff').toLowerCase()));let index=used.size;
+  let color;
+  do {
+    const hue=(index++*.618033988749895)%1,saturation=.55+(index%3)*.1,value=.85+(index%2)*.1;
+    const channel=n=>{const k=(n+hue*6)%6;return Math.round(255*value*(1-saturation*Math.max(0,Math.min(k,4-k,1)))).toString(16).padStart(2,'0');};
+    color=channel(5)+channel(3)+channel(1)+'ff';
+  } while(used.has(color));
+  return color;
+}
+// Separate rigs let artists move or edit each imported clip independently.
+// Share their selectable skins and sequence images, but never their bones,
+// slots or constraints. Apply image renaming once after combining the rigs.
+function buildBatch(mainInput,sourceInput,options,selected) {
+  const group=nextGroup(mainInput,options.prefix??'ImportedMain'),names=new Set(Object.keys(mainInput.animations||{}));
+  const animations=selected.map(source=>{
+    const result=String(options.overrides?.[`animation:${source}`]??`${group}_${source}`).trim();
+    if(!result||names.has(result))throw Error('The new animation names must be nonempty and unique.');
+    names.add(result);return {source,result};
+  });
+  let data=mainInput;const parts=[],rows=[],files=[],audio=[],sharedSkins=new Map();
+  for(const item of animations){
+    const scope=`clip:${JSON.stringify(item.source)}:`,overrides={};
+    for(const [id,value]of entries(options.overrides))if(id.startsWith(scope))overrides[id.slice(scope.length)]=value;
+    const part=buildMerge(data,sourceInput,{...options,animations:[item.source],animationName:item.result,overrides,sequenceRenames:{},replaceSequenceNames:false});
+    const skinMap=new Map();
+    for(const name of part.skinNames){
+      const original=name.slice(part.group.length);
+      if(!sharedSkins.has(original))sharedSkins.set(original,name);
+      skinMap.set(name,sharedSkins.get(original));
+    }
+    const skins=skinsOf(part.data);
+    for(const skin of skins)for(const values of Object.values(skin.attachments||{}))for(const attachment of Object.values(values))if(skinMap.has(attachment.skin))attachment.skin=skinMap.get(attachment.skin);
+    for(const skin of skins.filter(s=>skinMap.has(s.name)&&skinMap.get(s.name)!==s.name)){
+      const target=skins.find(s=>s.name===skinMap.get(skin.name));Object.assign(target.attachments,skin.attachments);
+      for(const field of ['bones',...groups])if(skin[field])target[field]=[...new Set([...(target[field]||[]),...skin[field]])];
+    }
+    const kept=skins.filter(s=>!skinMap.has(s.name)||skinMap.get(s.name)===s.name);
+    part.data.skins=Array.isArray(mainInput.skins)?kept:Object.fromEntries(kept.map(s=>[s.name,s.attachments]));
+    const animation=part.data.animations[item.result];
+    for(const section of ['deform','ffd','attachments'])if(animation[section])animation[section]=Object.fromEntries(entries(animation[section]).map(([skin,value])=>[skinMap.get(skin)||skin,value]));
+    const slots=part.data.slots.filter(s=>!(data.slots||[]).some(before=>before.name===s.name));
+    item.group=part.group;item.slots=slots.map(s=>s.name);
+    rows.push(...part.rows.map(row=>({...row,id:scope+row.id,animation:item.source})));
+    files.push(...part.files.map(file=>({...file,skin:skinMap.get(file.skin)||file.skin})));
+    audio.push(...part.audio);parts.push(part);data=part.data;
+  }
+  for(const item of animations){
+    const animation=data.animations[item.result];animation.slots ||= {};
+    for(const other of animations)for(const name of other.slots){
+      if(other!==item){animation.slots[name]={attachment:[{name:null}]};continue;}
+      const timelines=animation.slots[name] ||= {},keys=timelines.attachment;
+      if(!keys?.length||(keys[0].time||0)>0){const setup=data.slots.find(s=>s.name===name);timelines.attachment=[{name:setup.attachment??null},...(keys||[])];}
+    }
+  }
+  rows.push(...animations.map(item=>({id:`animation:${item.source}`,type:'animation',original:item.source,result:item.result})));
+  const animationNames=animations.map(a=>a.result),stats=Object.fromEntries(['bones','slots','attachments','images'].map(field=>[field,parts.reduce((sum,p)=>sum+p.stats[field],0)]));
+  const result={...parts[0],data,group,groups:animations.map(a=>a.group),animations,animationNames,animationName:animationNames[0],rows,files,audio,skinNames:[...sharedSkins.values()],stats:{...stats,animations:animations.length,skins:sharedSkins.size}};
+  return renameImageSequences(result,options.sequenceRenames||{},options.replaceSequenceNames===true);
 }
 function imageFolder(value) {
   if(typeof value!=='string'||!value.trim())throw Error('Enter an image subfolder name.');
@@ -215,17 +288,25 @@ function dependencySet(data, animationName) {
   return {animation, skins, bones, slots, attachments, constraints};
 }
 function buildMerge(mainInput, sourceInput, options = {}) {
-  const main = clone(mainInput);
-  const createSkins=options.createSkins!==false,selectedSkin=options.sourceSkin||'default';
-  const source=createSkins?clone(sourceInput):bakeSkin(clone(sourceInput),selectedSkin);
-  if (series(main.skeleton?.spine).join('.') !== series(source.skeleton?.spine).join('.')) throw Error('Convert both skeletons using the Main project editor version before merging.');
-  if (!main.bones?.length || !source.bones?.length) throw Error('Both projects must contain a root bone.');
+  const createSkins=options.createSkins===true,selectedSkin=options.sourceSkin||(skinsOf(sourceInput).some(s=>s.name==='default')?'default':skinsOf(sourceInput)[0]?.name||'default');
+  if (series(mainInput.skeleton?.spine).join('.') !== series(sourceInput.skeleton?.spine).join('.')) throw Error('Convert both skeletons using the Main project editor version before merging.');
+  if (!mainInput.bones?.length || !sourceInput.bones?.length) throw Error('Both projects must contain a root bone.');
   const prefix=options.prefix??'ImportedMain',folder=(options.useImageFolder??Boolean(options.imageFolder))?imageFolder(options.imageFolder):'';
-  const dep = dependencySet(source, options.animation), group = nextGroup(main,prefix), rows = [];
-  const animationName = String(options.animationName || `${group}_${options.animation}`).trim();
-  if (!animationName || own(main.animations, animationName)) throw Error('The new animation name must be nonempty and unique.');
+  if(options.animations!==undefined&&!Array.isArray(options.animations))throw Error('Choose one or more animations from the Import project.');
+  const selected=[...new Set(options.animations??[options.animation])];
+  if(!selected.length)throw Error('Choose at least one animation to import.');
+  if(selected.length>1&&options.animationName?.trim())throw Error('Use the animation mapping rows to name multiple animations.');
+  if(selected.length>1)return buildBatch(mainInput,sourceInput,options,selected);
+  const main=clone(mainInput),source=createSkins?clone(sourceInput):bakeSkin(clone(sourceInput),selectedSkin),dep=dependencySet(source,selected[0]);
+  const group = nextGroup(main,prefix), rows = [], animationNames=[],animations=[];
+  for(const name of selected){
+    const result=String(options.overrides?.[`animation:${name}`]??(selected.length===1&&options.animationName||`${group}_${name}`)).trim();
+    if(!result||own(main.animations,result)||animationNames.includes(result))throw Error('The new animation names must be nonempty and unique.');
+    animationNames.push(result);animations.push({source:name,result});
+  }
+  const animationName=animationNames[0];
   const supported = new Set(['bones','slots','ik','transform','path','paths','physics','deform','ffd','attachments','drawOrder','draworder','events']);
-  for (const key of Object.keys(dep.animation)) if (!supported.has(key)) throw Error(`Unsupported animation timeline: ${key}`);
+  for(const name of selected)for (const key of Object.keys(source.animations[name])) if (!supported.has(key)) throw Error(`Unsupported animation timeline: ${key}`);
   const used = new Map();
   function rename(type, id, original, fallback) {
     const rule = options.rename || {};
@@ -242,7 +323,7 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   const slotMap = new Map((source.slots || []).filter(s => dep.slots.has(s.name)).map(s => [s.name, `${group}_${safeName(s.name)}`]));
   const skinMap = new Map(dep.skins.map(s => [s.name, createSkins?`${group}_${safeName(s.name)}`:'default']));
   const constraintMaps = Object.fromEntries(groups.map(g => [g, new Map((source[g] || []).filter(c => dep.constraints[g].has(c.name)).map(c => [c.name, `${group}_${safeName(c.name)}`]))]));
-  const eventNames = new Set((dep.animation.events || []).map(e => e.name));
+  const eventNames = new Set(selected.flatMap(name=>(source.animations[name].events||[]).map(e=>e.name)));
   const eventMap = new Map([...eventNames].map(n => [n, `${group}_${safeName(n)}`]));
   const placeholderMap = new Map(), attachmentMap = new Map();
   for (const [id, a] of dep.attachments) {
@@ -262,9 +343,10 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   rejectExisting([...eventMap.values()], Object.keys(main.events || {}), 'Event');
   const root = main.bones.find(b => !b.parent);
   if (!root) throw Error('Main has no root bone.');
-  main.bones.push({name:group, parent:root.name, x:1000});
+  const color=nextBoneColor(main);
+  main.bones.push({name:group, parent:root.name, x:1000,color});
   const boneIndices = new Map();
-  source.bones.forEach((b, i) => { if (boneMap.has(b.name)) { boneIndices.set(i, main.bones.length); main.bones.push({...b, name:boneMap.get(b.name), parent:b.parent ? boneMap.get(b.parent) : group}); } });
+  source.bones.forEach((b, i) => { if (boneMap.has(b.name)) { boneIndices.set(i, main.bones.length); main.bones.push({...b, name:boneMap.get(b.name), parent:b.parent ? boneMap.get(b.parent) : group,color}); } });
   const placeholder = (slot, name) => name == null ? name : placeholderMap.get(JSON.stringify([slot, name]));
   for (const s of source.slots || []) if (slotMap.has(s.name)) {
     const copy = {...s, name:slotMap.get(s.name), bone:boneMap.get(s.bone)};
@@ -330,7 +412,8 @@ function buildMerge(mainInput, sourceInput, options = {}) {
   if(!createSkins&&importedDefault)for(const field of ['bones',...groups])if(importedDefault[field]?.length)defaultSkin[field]=[...new Set([...(defaultSkin[field]||[]),...importedDefault[field]])];
   const resultSkins=createSkins?[...targetSkins,...importedSkins]:targetSkins;
   main.skins = Array.isArray(mainInput.skins) ? resultSkins : Object.fromEntries(resultSkins.map(s => [s.name,s.attachments]));
-  const animation = clone(dep.animation);
+  for(const {source:sourceName,result:outputName}of animations){
+  const animation = clone(source.animations[sourceName]);
   const remapKeys = (object, map) => Object.fromEntries(entries(object).map(([name,value]) => { if (!map.has(name)) throw Error(`Unresolved animation reference: ${name}`); return [map.get(name), value]; }));
   if (animation.bones) animation.bones = remapKeys(animation.bones, boneMap);
   if (animation.slots) {
@@ -383,15 +466,17 @@ function buildMerge(mainInput, sourceInput, options = {}) {
     });
   }
   if (animation.events) for (const event of animation.events) event.name = eventMap.get(event.name);
+  main.animations ||= {}; main.animations[outputName] = animation;
+  }
   const audio=[];
   for (const [name, mapped] of eventMap) {
     main.events ||= {}; main.events[mapped] = clone(source.events?.[name] || {});
     if(main.events[mapped].audio){const original=main.events[mapped].audio,destination=`${group}_${safeName(original)}`;audio.push({source:original,destination});main.events[mapped].audio=destination;}
   }
-  main.animations ||= {}; main.animations[animationName] = animation;
+  if(animations.length>1)for(const item of animations)rows.push({id:`animation:${item.source}`,type:'animation',original:item.source,result:item.result});
   main.skeleton = {...main.skeleton, images:'./images/'}; delete main.skeleton.hash;
   const previewSkin=createSkins?(skinMap.get(selectedSkin)||importedSkins[0]?.name||'default'):'default';
-  const result={data:canonicalizeDefaultAttachments(main), group, prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
+  const result={data:canonicalizeDefaultAttachments(main), group, groups:[group], prefix, imageFolder:folder, createSkins, previewSkin, sourceSkin:createSkins?null:selectedSkin, animationName,animationNames,animations, rows, files, audio, skinNames:createSkins?importedSkins.map(s => s.name):[], stats:{animations:animations.length,bones:boneMap.size, slots:slotMap.size, attachments:dep.attachments.size+fallbackCopies.length, images:files.length, skins:createSkins?importedSkins.length:0}};
   return renameImageSequences(result,options.sequenceRenames||{},options.replaceSequenceNames===true);
 }
 function renameImageSequences(result,requestedRules,automatic){
@@ -453,4 +538,4 @@ function renameImageSequences(result,requestedRules,automatic){
   }
   result.sequenceGroups=detected;result.sequenceRenames=rules;return result;
 }
-module.exports = {buildMerge, dependencySet, compareVersions, nextGroup, imagePaths, skinsOf, safeName, validateImageFolder:imageFolder, canonicalizeDefaultAttachments, verifySavedAttachmentKeys};
+module.exports = {buildMerge, dependencySet, compareVersions, nextGroup, imagePaths, skinsOf, safeName, validateImageFolder:imageFolder, canonicalizeDefaultAttachments, verifySavedAttachmentKeys,verifySavedBones};

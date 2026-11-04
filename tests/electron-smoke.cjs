@@ -321,6 +321,26 @@ async function run() {
 
   await evaluateAsync('editCategory(workspace.categories[0]);document.querySelector(".delete-category").click();document.querySelector(".delete-category").click();');
   await check('deleting a category keeps original files and Favorites','({count:workspace.categories.length,active:activeCategory(),favorites:Object.keys(workspace.favorites).length})',r=>{assert.equal(r.count,8);assert.equal(r.active,'all');assert.equal(r.favorites,1);assert.equal(fs.existsSync(categoryAsset),true);});
+  const browseFolder=path.join(fixtures,'browse-location');fs.mkdirSync(browseFolder);
+  for(let i=0;i<60;i++)fs.writeFileSync(path.join(browseFolder,`browse-${String(i).padStart(2,'0')}.spine`),'raw editor project');
+  const browseState=await evaluateAsync(`await chooseFolder(${JSON.stringify(browseFolder)});searchInput.value='browse';searchInput.dispatchEvent(new Event('input'));await selectProject(filteredProjects()[36]);projectList.scrollTop=1400;const category=createCategory('Browse position');assignCategory(category.id,allProjects[0],true);workspace.favorites[allProjects[0].id]=bookmark(allProjects[0]);await spineApi.setAppendList(${JSON.stringify(sample)},true);await refreshAppendList();return {selected:selectedProject.id,scroll:projectList.scrollTop,category:category.id};`);
+  assert.ok(browseState.scroll>100,'The regression fixture must have a real scroll position');
+  for(const category of ['favorites','append',browseState.category]){
+    await evaluateAsync(`await selectCategory(${JSON.stringify(category)});searchInput.value='different search';searchInput.dispatchEvent(new Event('input'));projectList.scrollTop=0;await selectCategory('all');`);
+    await check(`All assets restores selection, search and scroll after ${category}`, '({selected:selectedProject.id,search:searchInput.value,scroll:projectList.scrollTop,folder:currentFolder})',r=>{assert.equal(r.selected,browseState.selected);assert.equal(r.search,'browse');assert.equal(r.scroll,browseState.scroll);assert.equal(r.folder,browseFolder);});
+  }
+  // The checkbox changes its value before the handler runs, unlike sidebar buttons.
+  await evaluateAsync("favoritesOnly.checked=true;await favoritesOnly.onchange();favoritesOnly.checked=false;await favoritesOnly.onchange();");
+  await check('Favorites checkbox also preserves the All assets browse position','({selected:selectedProject.id,scroll:projectList.scrollTop})',r=>{assert.equal(r.selected,browseState.selected);assert.equal(r.scroll,browseState.scroll);});
+  await evaluateAsync("await selectCategory('append')");
+  const browseReload=new Promise(resolve=>win.webContents.once('did-finish-load',resolve));win.reload();await browseReload;
+  await until('hasScannedFolder && currentFolder=== '+JSON.stringify(browseFolder));
+  await evaluateAsync("await selectCategory('all')");
+  await check('All assets browse position survives reload while another collection is open','({selected:selectedProject.id,search:searchInput.value,scroll:projectList.scrollTop})',r=>{assert.equal(r.selected,browseState.selected);assert.equal(r.search,'browse');assert.equal(r.scroll,browseState.scroll);});
+  await evaluateAsync("const pending=selectCategory('favorites');await selectCategory('all');await pending;");
+  await check('Rapid category switches keep the restored All assets selection','({active:activeCategory(),selected:selectedProject.id,scroll:projectList.scrollTop})',r=>{assert.equal(r.active,'all');assert.equal(r.selected,browseState.selected);assert.equal(r.scroll,browseState.scroll);});
+  await evaluateAsync("await selectProject(filteredProjects()[40]);await selectCategory('all');");
+  await check('Clicking the active collection keeps the current selection','selectedProject.id===filteredProjects()[40].id',r=>assert.equal(r,true));
   win.setSize(1920,1080);
   await evaluateAsync(`searchInput.value='';await selectCategory('all');libraryView.value='list';await chooseFolder(${JSON.stringify(path.join(root,'tests/fixtures'))})`);
   await wait(600);

@@ -1,12 +1,58 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {buildMerge,dependencySet,compareVersions,imagePaths,canonicalizeDefaultAttachments,verifySavedAttachmentKeys}=require('../import-merge');
+const {buildMerge,dependencySet,compareVersions,imagePaths,canonicalizeDefaultAttachments,verifySavedAttachmentKeys,verifySavedBones}=require('../import-merge');
 const base=()=>({skeleton:{spine:'4.2.43'},bones:[{name:'root'}],slots:[],skins:[{name:'default',attachments:{}}],animations:{idle:{bones:{root:{rotate:[{value:2}]}}}}});
+
+test('batch animations have separate colored rigs and preserve independent keys and Main animations',()=>{
+  const input=source(),main=base();
+  delete input.animations.attack.slots.hidden;input.slots[1].color='ffffff00';
+  input.skins[0].attachments.body.recover={path:'recovery/head',width:20,height:20};
+  input.events.recovery={audio:'recover.wav'};
+  input.animations.recover={bones:{target:{translate:[{time:.2,x:12}]}},slots:{body:{attachment:[{time:.1,name:'recover'},{time:.4}]}},events:[{time:.3,name:'recovery'}]};
+  const before=structuredClone(input),mainBefore=structuredClone(main);
+  for(const createSkins of [true,false]){
+    const r=buildMerge(main,input,{animations:['attack','recover'],prefix:'Batch',imageFolder:'Batch',createSkins});
+    assert.deepEqual(r.animationNames,['Batch_attack','Batch_recover']);assert.equal(r.stats.animations,2);
+    assert.deepEqual(Object.keys(r.data.animations),['idle','Batch_attack','Batch_recover']);assert.deepEqual(r.data.animations.idle,mainBefore.animations.idle);
+    assert.deepEqual(r.groups,['Batch','Batch2']);
+    for(const group of r.groups){assert.equal(r.data.bones.find(b=>b.name===group).parent,'root');assert.equal(r.data.bones.find(b=>b.name===group+'_root').parent,group);assert.equal(r.data.bones.find(b=>b.name===group+'_body').parent,group+'_root');}
+    const colors=r.groups.map(group=>r.data.bones.find(b=>b.name===group).color);assert.ok(colors.every(c=>/^[a-f0-9]{6}ff$/.test(c)));assert.equal(new Set(colors).size,r.groups.length);
+    for(const group of r.groups){const descendants=new Set([group]),color=r.data.bones.find(b=>b.name===group).color;for(const bone of r.data.bones){if(descendants.has(bone.parent))descendants.add(bone.name);if(descendants.has(bone.name))assert.equal(bone.color,color);}}
+    assert.equal(r.data.bones.filter(b=>b.name==='Batch_body').length,1);assert.equal(r.data.bones.some(b=>b.name==='Batch_unused'),false);
+    assert.equal(r.files.filter(f=>f.source==='blink').length,1);assert.equal(r.files.filter(f=>f.source==='recovery/head').length,createSkins?2:1);
+    assert.deepEqual(r.data.animations.Batch_attack.bones.Batch_body.rotate,[{value:30}]);
+    assert.deepEqual(r.data.animations.Batch_recover.bones.Batch2_target.translate,[{time:.2,x:12}]);
+    assert.deepEqual(r.data.animations.Batch_recover.events,[{time:.3,name:'Batch2_recovery'}]);
+    assert.deepEqual(r.audio,[{source:'recover.wav',destination:'Batch2_recover.wav'}]);
+    assert.deepEqual(r.data.animations.Batch_attack.slots.Batch2_body.attachment,[{name:null}]);
+    assert.deepEqual(r.data.animations.Batch_recover.slots.Batch_body.attachment,[{name:null}]);
+    assert.equal(r.data.ik.find(c=>c.name==='Batch2_aim').target,'Batch2_target');
+    assert.equal(r.skinNames.length,createSkins?2:0);
+    assert.equal(r.rows.filter(row=>row.type==='animation').length,2);
+    for(const name of r.animationNames)verifySavedAttachmentKeys(r.data,r.data,name,r.groups,r.previewSkin);
+    verifySavedBones(r.data,r.data,r.groups);
+  }
+  assert.deepEqual(input,before);assert.deepEqual(main,mainBefore);
+});
+
+test('batch animation names are editable and empty selections, unknown clips and collisions are rejected',()=>{
+  const options={animations:['attack','unused']};
+  const r=buildMerge(base(),source(),{...options,overrides:{'animation:attack':'New attack','animation:unused':'New idle'}});
+  assert.deepEqual(r.animationNames,['New attack','New idle']);
+  assert.throws(()=>buildMerge(base(),source(),{animations:[]}),/at least one/);
+  assert.throws(()=>buildMerge(base(),source(),{animations:'attack'}),/one or more/);
+  assert.throws(()=>buildMerge(base(),source(),{animations:['attack','absent']}),/Select an animation/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:attack':'idle'}}),/unique/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:attack':'same','animation:unused':'same'}}),/unique/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,overrides:{'animation:unused':'  '}}),/nonempty/);
+  assert.throws(()=>buildMerge(base(),source(),{...options,animationName:'one name'}),/mapping rows/);
+  const broken=source();broken.animations.unused.unknown={};assert.throws(()=>buildMerge(base(),broken,options),/Unsupported animation timeline/);
+});
 function source(){return {skeleton:{spine:'4.2.43'},bones:[{name:'root'},{name:'body',parent:'root'},{name:'target',parent:'root'},{name:'unused',parent:'root'}],slots:[{name:'body',bone:'body',attachment:'head'},{name:'hidden',bone:'unused',attachment:'unused'}],skins:[{name:'default',attachments:{body:{head:{width:20,height:20},blink:{width:20,height:20}},hidden:{unused:{}}}},{name:'red',attachments:{body:{head:{path:'red/head',width:20,height:20},blink:{path:'red/blink',width:20,height:20}}}}],ik:[{name:'aim',bones:['body'],target:'target'}],events:{hit:{int:1},unused:{}},animations:{attack:{bones:{body:{rotate:[{value:30}]}},slots:{body:{attachment:[{name:'blink',time:0.5}]},hidden:{attachment:[{name:null}]}},events:[{name:'hit',time:.2}]},unused:{bones:{unused:{rotate:[{value:4}]}}}}};}
 test('copies only required dependencies, adds offset parent, and leaves Main keys intact',()=>{
-  const main=base(),input=source(),snapshot=structuredClone(main),r=buildMerge(main,input,{animation:'attack'});
+  const main=base(),input=source(),snapshot=structuredClone(main),r=buildMerge(main,input,{animation:'attack',createSkins:true});
   assert.deepEqual(main,snapshot);assert.deepEqual(r.data.animations.idle,main.animations.idle);
-  assert.deepEqual(r.data.bones.find(b=>b.name==='ImportedMain'),{name:'ImportedMain',parent:'root',x:1000});
+  const parent=r.data.bones.find(b=>b.name==='ImportedMain');assert.equal(parent.parent,'root');assert.equal(parent.x,1000);assert.match(parent.color,/^[a-f0-9]{6}ff$/);
   assert.ok(r.data.bones.some(b=>b.name==='ImportedMain_target'));
   assert.ok(!r.files.some(f=>f.source==='unused'));assert.equal(r.files.length,4);
   assert.equal(Object.keys(r.data.animations).length,2);
@@ -20,12 +66,13 @@ test('find replace, explicit overrides, repeated numbering, and collisions',()=>
   const a=buildMerge(base(),source(),{animation:'attack',rename:{find:'body',replace:'torso'}});
   assert.ok(a.data.bones.some(b=>b.name==='ImportedMain_torso'));
   const b=buildMerge(a.data,source(),{animation:'attack'});assert.equal(b.group,'ImportedMain2');
+  assert.notEqual(b.data.bones.find(bone=>bone.name===b.group).color,b.data.bones.find(bone=>bone.name===a.group).color);assert.deepEqual(b.data.bones.slice(0,a.data.bones.length),a.data.bones);
   assert.throws(()=>buildMerge(base(),source(),{animation:'attack',overrides:{'bone:body':'root'}}),/already exists/);
   assert.throws(()=>buildMerge(base(),source(),{animation:'attack',animationName:'idle'}),/unique/);
   assert.throws(()=>buildMerge(base(),source(),{animation:'attack',overrides:{'bone:body':'bad/name'}}),/Invalid/);
 });
 test('a custom prefix names every imported item and numbers repeat groups',()=>{
-  const a=buildMerge(base(),source(),{animation:'attack',prefix:'Impact'});
+  const a=buildMerge(base(),source(),{animation:'attack',prefix:'Impact',createSkins:true});
   assert.equal(a.group,'Impact');assert.ok(a.rows.every(row=>row.result.startsWith('Impact_')));
   assert.ok(a.skinNames.every(n=>n.startsWith('Impact_')));assert.equal(buildMerge(a.data,source(),{animation:'attack',prefix:'Impact'}).group,'Impact2');
   assert.throws(()=>buildMerge(base(),source(),{animation:'attack',prefix:''}),/prefix/);
@@ -45,6 +92,56 @@ test('disabling new skins bakes the selected source skin into Main default attac
   assert.ok(r.files.every(f=>f.source.startsWith('red/')));assert.equal(r.sourceSkin,'red');
   assert.ok(Object.keys(r.data.skins[0].attachments).some(n=>n.startsWith('ImportedMain_')));
   assert.throws(()=>buildMerge(main,source(),{animation:'attack',createSkins:false,sourceSkin:'missing'}),/skin not found/);
+});
+test('default import displays the selected artwork without activating an imported skin',()=>{
+  const main=base();main.skins.push({name:'Existing',attachments:{}});
+  const r=buildMerge(main,source(),{animations:['attack','unused'],sourceSkin:'red'});
+  assert.equal(r.createSkins,false);assert.equal(r.previewSkin,'default');assert.equal(r.stats.skins,0);
+  for(const name of r.animationNames)verifySavedAttachmentKeys(r.data,r.data,name,r.groups,'Existing');
+  const missing=structuredClone(r.data),slot=Object.keys(missing.skins[0].attachments)[0];
+  missing.skins.push({name:'Hidden',attachments:{[slot]:missing.skins[0].attachments[slot]}});delete missing.skins[0].attachments[slot];
+  assert.throws(()=>verifySavedAttachmentKeys(r.data,missing,r.animationNames[0],r.groups,'Existing'),/missing attachment/);
+});
+test('batch mapping edits stay local to their clip and verification checks every group',()=>{
+  const options={animations:['attack','unused']},first=buildMerge(base(),source(),options);
+  const row=first.rows.find(r=>r.type==='bone'&&r.animation==='unused'&&r.original==='body');
+  const r=buildMerge(base(),source(),{...options,overrides:{[row.id]:'CustomBody'}});
+  assert.ok(r.data.bones.some(b=>b.name==='ImportedMain_body'));assert.equal(r.data.bones.find(b=>b.name==='CustomBody').parent,'ImportedMain2_root');
+  const broken=structuredClone(r.data);broken.bones.find(b=>b.name==='CustomBody').parent='ImportedMain_root';
+  assert.throws(()=>verifySavedBones(r.data,broken,r.groups),/Saved imported bone changed/);
+  const slot=broken.slots.find(s=>s.name.startsWith('ImportedMain2_'));slot.attachment='lost';
+  assert.throws(()=>verifySavedAttachmentKeys(r.data,broken,r.animationNames[0],r.groups),/setup attachment changed/);
+});
+test('batch animation switching displays only its own rig with no selected skin',()=>{
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),context={console};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../node_modules/spine-player-42/dist/iife/spine-player.js'),'utf8'),context);
+  const runtime=context.spine,loader={newRegionAttachment:(_s,n)=>new runtime.RegionAttachment(n)};
+  const input=source();delete input.animations.attack.slots.hidden;
+  const r=buildMerge(base(),input,{animations:['attack','unused']}),data=new runtime.SkeletonJson(loader).readSkeletonData(r.data),skeleton=new runtime.Skeleton(data),state=new runtime.AnimationState(new runtime.AnimationStateData(data));
+  for(const index of [0,1,0]){
+    state.setAnimation(0,r.animationNames[index],false);state.update(.1);state.apply(skeleton);
+    const current=r.animations[index],others=r.animations.filter(a=>a!==current);
+    assert.ok(current.slots.some(name=>skeleton.findSlot(name).attachment));
+    for(const other of others)for(const name of other.slots)assert.equal(skeleton.findSlot(name).attachment,null);
+  }
+});
+test('each batch rig preserves weighted linked meshes, deformation and skin bone dependencies',()=>{
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),context={console};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../node_modules/spine-player-42/dist/iife/spine-player.js'),'utf8'),context);
+  const runtime=context.spine,loader={newMeshAttachment:(_s,n)=>new runtime.MeshAttachment(n)};
+  const input={skeleton:{spine:'4.2.43'},bones:[{name:'root'},{name:'weight',parent:'root',skin:true}],slots:[{name:'art',bone:'weight',attachment:'linked'}],skins:[{name:'default',attachments:{art:{mesh:{type:'mesh',uvs:[0,0,1,0,0,1],triangles:[0,1,2],vertices:[1,1,0,0,1,1,1,10,0,1,1,1,0,10,1]}}}},{name:'red',bones:['weight'],attachments:{art:{linked:{type:'linkedmesh',parent:'mesh',skin:'default'}}}}],animations:{first:{bones:{weight:{translate:[{x:3},{time:.5,x:10}]}},attachments:{default:{art:{mesh:{deform:[{vertices:[2,1,2,1,2,1]},{time:.5,vertices:[4,2,4,2,4,2]}]}}}}},second:{bones:{weight:{translate:[{x:9},{time:.5,x:20}]}},attachments:{default:{art:{mesh:{deform:[{vertices:[1,3,1,3,1,3]},{time:.5,vertices:[2,6,2,6,2,6]}]}}}}}}};
+  for(const createSkins of [false,true]){
+    const r=buildMerge(base(),input,{animations:['first','second'],sourceSkin:'red',createSkins});
+    for(const item of r.animations){
+      const original=new runtime.Skeleton(new runtime.SkeletonJson(loader).readSkeletonData(input)),merged=new runtime.Skeleton(new runtime.SkeletonJson(loader).readSkeletonData(r.data));
+      original.setSkinByName('red');merged.setSkinByName(r.previewSkin);merged.findBone(item.group).x=0;
+      for(const [skeleton,name]of [[original,item.source],[merged,item.result]]){skeleton.setToSetupPose();const state=new runtime.AnimationState(new runtime.AnimationStateData(skeleton.data));state.setAnimation(0,name,false);state.update(.25);state.apply(skeleton);skeleton.updateWorldTransform(runtime.Physics.update);}
+      // setToSetupPose restores the configured parent offset; compare at the source origin.
+      merged.findBone(item.group).x=0;merged.updateWorldTransform(runtime.Physics.update);
+      const slots=[original.findSlot('art'),merged.findSlot(item.group+'_art')],vertices=slots.map(slot=>{assert.ok(slot.bone.active);assert.ok(slot.deform.length>0);const out=[];slot.attachment.computeWorldVertices(slot,0,slot.attachment.worldVerticesLength,out,0,2);return out;});
+      assert.equal(vertices[0].length,vertices[1].length);vertices[0].forEach((value,i)=>assert.ok(Math.abs(value-vertices[1][i])<.00001));
+    }
+  }
 });
 test('default-skin keys use actual names that survive the Spine editor import',()=>{
   for(const createSkins of [false,true]){
@@ -103,7 +200,7 @@ test('weighted meshes retain unkeyed influence bones and remap original indices'
 test('linked mesh and deform skin references stay consistent',()=>{
   const s=source();s.skins[0].attachments.body.head={type:'linkedmesh',parent:'parent',skin:'default'};s.skins[0].attachments.body.parent={type:'mesh',uvs:[0,0],vertices:[0,0],triangles:[]};
   s.animations.attack.deform={default:{body:{parent:[{vertices:[1,2]}]}}};
-  const r=buildMerge(base(),s,{animation:'attack'}),skin=r.data.skins.find(s=>s.name==='ImportedMain_default');
+  const r=buildMerge(base(),s,{animation:'attack',createSkins:true}),skin=r.data.skins.find(s=>s.name==='ImportedMain_default');
   const linked=Object.values(skin.attachments.ImportedMain_body).find(a=>a.type==='linkedmesh');
   assert.ok(skin.attachments.ImportedMain_body[linked.parent]);
   assert.equal(linked.skin,'ImportedMain_default');

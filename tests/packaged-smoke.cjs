@@ -67,6 +67,12 @@ async function run(){
   const favorite=await evaluate('({folder:currentFolder,path:selectedProject.fullPath,count:filteredProjects().length})');
   assert.equal(favorite.folder,folderB);assert.equal(path.dirname(favorite.path),folderA);assert.equal(favorite.count,1);
   checks.push('Global favorite from another folder previews in the packaged app');
+  const browse=await evaluate(`(async()=>{await selectCategory('all');await chooseFolder(${JSON.stringify(path.join(root,'tests/fixtures'))});libraryView.value='list';libraryView.onchange();searchInput.value='spineboy';searchInput.dispatchEvent(new Event('input'));await selectProject(filteredProjects().at(-1));projectList.scrollTop=600;return {selected:selectedProject.id,scroll:projectList.scrollTop};})()`);
+  assert.ok(browse.scroll>0,'Packaged library fixture must scroll');
+  await evaluate(`(async()=>{await selectCategory('favorites');searchInput.value='other search';searchInput.dispatchEvent(new Event('input'));await selectCategory('all');})()`);
+  const restored=await evaluate('({selected:selectedProject.id,scroll:projectList.scrollTop,search:searchInput.value})');
+  assert.equal(restored.selected,browse.selected);assert.equal(restored.scroll,browse.scroll);assert.equal(restored.search,'spineboy');
+  checks.push('Packaged All assets restores selection, search and scroll after visiting Favorites');
   if(process.env.SPINE_TEST_ASSET_FOLDER){
     const folder=process.env.SPINE_TEST_ASSET_FOLDER;
     await evaluate(`(async()=>{favoritesOnly.checked=false;searchInput.value='';await chooseFolder(${JSON.stringify(folder)});})()`);
@@ -106,6 +112,13 @@ async function run(){
   assert.equal(await importEvaluate('document.querySelectorAll(".project-grid .project").length'),2);
   assert.equal(await importEvaluate('typeof spineImport.plan'),'function');
   checks.push('Packaged side-by-side Import workspace and preload load');
+  const steps=await importEvaluate('[...document.querySelectorAll(".workflow-step")].map(s=>({locked:s.classList.contains("is-locked"),disabled:s.querySelector(".step-content").disabled,inert:s.querySelector(".step-content").inert}))');
+  assert.equal(steps.length,5);assert.deepEqual(steps.map(s=>s.locked),[false,true,true,true,true]);assert.ok(steps.slice(1).every(s=>s.disabled&&s.inert));
+  assert.equal(await importEvaluate('document.getElementById("save").matches(":disabled")'),true);
+  checks.push('Packaged guided importer locks all later steps and saving until prerequisites are complete');
+  const actions=await importEvaluate('({heights:["chooseMain","chooseImport","review","previewResult","save"].map(id=>document.getElementById(id).getBoundingClientRect().height),selection:!!document.getElementById("animationChecklist"),selectAll:!!document.getElementById("selectAllAnimations"),preview:!!document.getElementById("combinedAnimation")})');
+  assert.ok(actions.heights.every(height=>height>=52));assert.ok(actions.heights.at(-1)>=60);assert.ok(actions.selection&&actions.selectAll&&actions.preview);
+  checks.push('Packaged importer includes prominent actions, batch selection and an animation preview selector');
   for(let i=0;i<100;i++){if(await importEvaluate('document.getElementById("appendSource").options.length>1'))break;await wait(30);}
   assert.equal(await importEvaluate('document.getElementById("appendSource").options.length'),2);
   await evaluate(`spineApi.setAppendList(${JSON.stringify(path.join(root,'tests/fixtures/3.8/spineboy-pro.json'))},true)`);
@@ -113,7 +126,7 @@ async function run(){
   assert.equal(await importEvaluate('document.getElementById("appendSource").options.length'),3);
   checks.push('Packaged Import picker shares Append list sources and receives live updates');
   const importOptions=await importEvaluate('({prefix:document.getElementById("importPrefix").value,folderRequired:document.getElementById("imageFolder").required,folderDisabled:document.getElementById("imageFolder").disabled,createSkins:document.getElementById("createSkins").checked})');
-  assert.equal(importOptions.prefix,'ImportedMain');assert.equal(importOptions.folderRequired,true);assert.equal(importOptions.folderDisabled,false);assert.equal(importOptions.createSkins,true);
+  assert.equal(importOptions.prefix,'ImportedMain');assert.equal(importOptions.folderRequired,true);assert.equal(importOptions.folderDisabled,false);assert.equal(importOptions.createSkins,false);
   checks.push('Packaged importer includes custom prefix, image subfolder and new-skins controls');
   const sequences=await importEvaluate('(()=>{const files=[10,2,8,4].map(n=>({source:"fx/frame_"+n,destination:"old"+n,attachment:"a"+n,skin:"default"}));const group=ImageSequences.detect(files,[],"Fx")[0];return {panel:!!document.getElementById("sequenceGroups"),newName:group.defaultPrefix,numbers:group.frames.map(f=>f.number),names:ImageSequences.names(group,{prefix:"Thunder_",suffix:"_hit",start:1,padding:3}).files};})()');
   assert.equal(sequences.panel,true);assert.equal(sequences.newName,'Sequence1_');assert.deepEqual(sequences.numbers,['2','4','8','10']);assert.deepEqual(sequences.names,['Thunder_001_hit','Thunder_002_hit','Thunder_003_hit','Thunder_004_hit']);
