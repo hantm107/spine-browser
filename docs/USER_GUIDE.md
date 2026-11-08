@@ -18,6 +18,8 @@ Each animation has its own wrapping button. The shared toolbar provides pause/pl
 
 The app restores the last folder, selected asset, search, library scroll, list/grid view, favorites filter, playback speed, loop mode, and animation choice. **Recent folders** remembers the last ten folders; **Rescan folder** refreshes the current library. A missing folder produces an error and leaves Choose folder available.
 
+The library and importer each remember their window size and maximized state when closed. They restore those settings on reopening; saved sizes are fitted to the current display. A minimized window reopens normally or maximized, rather than staying minimized.
+
 Each collection remembers its own selected asset, search, and scroll position. Visit **Favorites**, **Append list**, or a custom category, then return to **All assets** to resume browsing where you left off. This position is retained when the app restarts while another collection is open.
 
 Use the star on an entry to bookmark it and **Favorites** in the Categories section to open your global bookmarks across all folders. Favorites store absolute file paths and can be previewed regardless of the active folder. Existing bookmarks migrate automatically. Missing or moved files stay bookmarked with an unavailable status, and their full paths remain visible. **Grid** shows larger thumbnail cards. Thumbnails are captured as you preview visible assets, rather than rendering the entire collection in the background. Pause at a useful frame and press **Update thumbnail** to replace a thumbnail. Thumbnail PNGs are cached in Electron's user data directory; original assets are never modified.
@@ -37,6 +39,16 @@ Use **Append +** on a library item to save it as an import source. **Append list
 In the import workspace, choose a saved project under **From Append list** and click **Use as Import**. Main stays open and no folder picker is needed. You can also click **Import animation** on an entry in the library's Append list to open it directly as Import. **Add current source to list** saves a project already open in the Import pane, including a working project reconstructed from exports.
 
 The library and import workspace share updates immediately. Missing files stay listed as unavailable; sources missing the required `images/` folder cannot be used until that folder is present. **Refresh list** rechecks availability. Saving an export still follows the existing working-project reconstruction flow when its folder has no `.spine` project.
+
+## Back up and restore the library
+
+Click **Export library** above the collections and choose where to save the JSON file. The backup contains the current and recent folder links, global Favorites, category names/colors and asset memberships, Append sources, browsing positions/search/view, Hide .skel preference, and saved Spine CLI settings. Missing bookmarked files are included too.
+
+Click **Restore library**, choose a backup, and review its counts before choosing **Restore library** in the confirmation. Restore replaces the current library and preferences. Close the Import animation window first so an open import session does not retain conflicting settings. After restoring, the library reloads and checks file availability.
+
+Before replacement, the app saves the current library to `library-backups/before-restore-<timestamp>-<id>.json` in its Electron user-data folder. The success dialog gives the complete recovery path. To undo a restore, use **Restore library** again and choose that recovery JSON. Canceled operations and invalid or unsupported backups leave the current library intact. If a preference write fails, the app rolls back the Append list and reports the recovery location.
+
+Backups contain absolute paths and metadata; keep the actual `.spine`, exports, atlases, images, and reconstructed import working folders separately. On another computer, the files need to be available at the same paths. Missing links remain bookmarked as unavailable. Thumbnails, temporary import sessions, and window sizes are excluded. See [the backup format](LIBRARY_BACKUP.md) for the JSON structure and compatibility rules.
 
 ## Import animations into another project
 
@@ -78,7 +90,7 @@ The new `.spine` project is rebuilt through Spine's official export/import workf
 
 Legacy **Spine 2.0 and 2.1** JSON and binary skeleton exports are supported alongside the existing 3.x and 4.x runtimes. Native 2.x animation behavior includes bone flips, IK, weighted meshes, and FFD. Related `.spine` projects can preview their accompanying exports as usual. Unversioned legacy JSON uses a clearly labeled 2.1 compatibility fallback; unversioned/`Dev` binary exports cannot be safely identified and remain unsupported. Reference coverage and archive-specific limitations are documented in [vendor/README.md](../vendor/README.md) and [tests/fixtures/README.md](../tests/fixtures/README.md). Original assets are never rewritten.
 
-Supported playback versions: **Spine 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 4.0, 4.1, 4.2, and 4.3**, for binary `.skel` and JSON exports. The app detects the export version and loads its local runtime or compatibility adapter automatically. Switching folders or versions requires no setting changes or re-export. Previews work offline and do not launch the Spine editor. Unsupported or malformed files display an explanation instead of being sent to an incompatible parser.
+Supported playback versions: **Spine 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 4.0, 4.1, 4.2, and 4.3**, for binary `.skel` and JSON exports. The app detects the export version from the file contents and loads its local runtime or compatibility adapter automatically. Converted JSON labels such as `3.8-from-4.0-from-4.1.24` select the target runtime (3.8) while preserving the full version label. Folder names do not determine the version. Switching folders or versions requires no setting changes or re-export. Previews work offline and do not launch the Spine editor. Unsupported or malformed files display an explanation instead of being sent to an incompatible parser.
 
 Preview blending supports Normal, Additive, Multiply, and Screen with straight-alpha and premultiplied atlas textures. Textures are normalized to premultiplied alpha in GPU memory per atlas page (`pma: true` pages are not multiplied twice). Older Screen blending uses the corrected destination-color factor. The source atlas, textures, and skeleton blend settings are never rewritten.
 

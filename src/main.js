@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu, screen } = require('electron');
 const { version } = require('../package.json');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -10,22 +10,28 @@ const { scanDirectory, findSkeletonAssetPair, detectSpineFileCompatibility } = r
 const {createImportService} = require('./import-service');
 const {randomUUID} = require('node:crypto');
 const {createAppendListStore}=require('./append-list-store');
-let importWindow, importService, appendList, pendingAppendSource=null;
+const {createWindowStateStore}=require('./window-state');
+const {registerDatabaseBackup}=require('./database-backup-ipc');
+let importWindow, importService, appendList, windowState, databaseBackup, pendingAppendSource=null;
 
 function openImportWindow(source) {
+  if(databaseBackup?.isBusy())return;
   if(typeof source==='string')pendingAppendSource=source;
   if(importWindow && !importWindow.isDestroyed()) { importWindow.focus();if(pendingAppendSource)importWindow.webContents.send('import-append-source-ready');return; }
-  importWindow = new BrowserWindow({title:'Animation Import — Spine Browser',width:1480,height:960,minWidth:1100,minHeight:740,
+  importWindow = new BrowserWindow({title:'Animation Import — Spine Browser',
+    ...windowState.options('import',{width:1480,height:960,minWidth:1100,minHeight:740},screen.getPrimaryDisplay().workAreaSize),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false}});
+  windowState.track(importWindow,'import');
   importWindow.loadFile(path.join(__dirname,'import.html'));
   importWindow.on('closed',()=>{importWindow=null;pendingAppendSource=null;});
 }
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1200, height: 850, minWidth: 980, minHeight: 640,
+    ...windowState.options('main',{width:1200,height:850,minWidth:980,minHeight:640},screen.getPrimaryDisplay().workAreaSize),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
+  windowState.track(win,'main');
   win.loadFile(path.join(__dirname, 'index.html'));
 }
 
@@ -65,12 +71,16 @@ async function openInSpine(filePath) {
 }
 
 app.whenReady().then(() => {
+  windowState=createWindowStateStore(path.join(app.getPath('userData'),'window-state.json'));
   appendList=createAppendListStore(path.join(app.getPath('userData'),'append-list.json'));
+  databaseBackup=registerDatabaseBackup({ipcMain,dialog,BrowserWindow,appendList,userData:app.getPath('userData'),appVersion:version,
+    isImportOpen:()=>!!importWindow&&!importWindow.isDestroyed()});
   importService=createImportService({root:path.join(app.getPath('userData'),'import-workspace',randomUUID()),onProgress:message=>{
     if(importWindow&&!importWindow.isDestroyed())importWindow.webContents.send('import-progress',message);
   }});
   ipcMain.handle('append-list-get',()=>appendList.list());
   ipcMain.handle('append-list-set',async(_event,file,enabled)=>{
+    if(databaseBackup.isBusy())throw Error('Wait for the library backup operation to finish.');
     const records=await appendList.set(file,enabled===true);
     for(const window of BrowserWindow.getAllWindows())if(!window.isDestroyed())window.webContents.send('append-list-changed');
     return records;

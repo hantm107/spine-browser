@@ -72,6 +72,52 @@ test('detects the version from binary fixtures for every supported series', asyn
   }
 });
 
+test('converted JSON routes by its target series and preserves its conversion history', async t => {
+  const version = '3.8-from-4.0-from-4.1.24';
+  const dir = await fixture(t, { 'effect.json': json(version), 'effect.atlas': '', 'effect.spine': '' });
+  const file = path.join(dir, 'effect.json');
+  const original = await fs.readFile(file, 'utf8');
+  const result = await assets.detectSpineFileCompatibility(file);
+  assert.equal(result.fileVersion, version);
+  assert.equal(result.series, '3.8');
+  assert.equal(result.runtime, 'legacy38');
+  assert.equal(result.mismatch, false);
+  assert.equal((await assets.findSkeletonAssetPair(path.join(dir, 'effect.spine'))).skeletonPath, file);
+  assert.equal(await fs.readFile(file, 'utf8'), original);
+  for (const label of ['4.2-from-4.3.13', '3.8.99-from-4.0.64']) {
+    assert.equal(assets.versionSeries(label), label.slice(0, 3));
+  }
+  for (const label of ['3.8-from-unknown', 'Dev-from-3.8.99']) assert.equal(assets.versionSeries(label), null);
+  await fs.writeFile(file, json('4.4-from-3.8.99'));
+  assert.equal((await assets.detectSpineFileCompatibility(file)).mismatch, true);
+});
+
+test('automatically detects release, beta and converted JSON labels across the runtime catalog', async t => {
+  const dir = await fixture(t, {});
+  const file = path.join(dir, 'animation.JSON');
+  for (const series of Object.keys(require('../src/runtime-catalog'))) {
+    for (const version of [series, `${series}.99`, `${series}-beta`, `${series}.99-beta`, `${series}-from-4.3.13`, ` ${series}-from-4.0-from-4.1.24 `]) {
+      await fs.writeFile(file, '\uFEFF' + json(version));
+      const result = await assets.detectSpineFileCompatibility(file);
+      assert.equal(result.series, series, version);
+      assert.equal(result.mismatch, false, version);
+      assert.equal(result.fileVersion, version);
+    }
+  }
+  for (const version of [null, {}, '', 'Dev', '3.8garbage', '3.8.bad', '3.8.99-from-unknown', '3.8-from-4.0junk']) {
+    assert.equal(assets.versionSeries(version), null, String(version));
+  }
+});
+
+test('detects binary headers without mistaking version-like asset names for metadata', async () => {
+  for (const series of ['2.0','2.1','3.0','3.1','3.2','3.3','3.4','3.5','3.6','3.7','3.8','4.0','4.1','4.2']) {
+    const bytes = await fs.readFile(path.join(__dirname, 'fixtures', series, 'spineboy-pro.skel'));
+    assert.equal(assets.versionSeries(assets.binaryHeaderVersion(bytes)), series);
+    for (const length of [0, 1, 8]) assert.equal(assets.binaryHeaderVersion(bytes.subarray(0, length)), null);
+  }
+  assert.equal(assets.binaryHeaderVersion(Buffer.from('custom header with asset-3.8.99 and 4.2.43')), null);
+});
+
 test('scans JSON skeletons, ignores application JSON and reports root folders correctly', async t => {
   const dir = await fixture(t, { 'VALID.JSON': json(), 'settings.json': '{}', 'null.json': 'null', 'broken.json': '{', 'raw.spine': 'raw' });
   const result = await assets.scanDirectory(dir);

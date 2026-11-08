@@ -4,7 +4,10 @@ const runtimeVersion = require('@esotericsoftware/spine-player/package.json').ve
 const runtimeCatalog = require('./runtime-catalog');
 
 function versionSeries(version) {
-  return typeof version === 'string' ? version.match(/^(\d+\.\d+)(?:\.|$)/)?.[1] || null : null;
+  if (typeof version !== 'string') return null;
+  // Converted JSON records its target first, followed by source-version history.
+  // Keep the full label in fileVersion; only runtime selection needs the target.
+  return version.trim().match(/^(\d+\.\d+)(?:\.\d+)?(?:-beta)?(?:-from-\d+\.\d+(?:\.\d+)?(?:-beta)?)*$/)?.[1] || null;
 }
 
 function binaryHeaderVersion(bytes) {

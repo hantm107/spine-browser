@@ -10,8 +10,9 @@ Run the `.exe` directly. No installation or Node.js is required. The release inc
 
 ## Features
 
-- Preview Spine JSON and binary exports across 2.0, 2.1, 3.0–3.8, and 4.0–4.3, with playback controls, skin selection, and scrubbing.
+- Automatically detect the version of Spine JSON and binary exports across 2.0, 2.1, 3.0–3.8, and 4.0–4.3, including converted JSON, and preview them with playback controls, skin selection, and scrubbing.
 - Organize assets with search, thumbnails, Favorites, categories, and a saved Append list. Each collection remembers your browsing position.
+- Export the library to a versioned JSON backup and restore folder links, bookmarks, categories, Append sources, and preferences, with a recovery copy before replacement.
 - Import multiple animations into a new project with separate rigs, one bone color per rig, image-sequence renaming, and a combined preview.
 
 ## Quick start

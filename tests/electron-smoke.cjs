@@ -180,6 +180,12 @@ async function run() {
   await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
   await check('3.8.75 binary loads without changing its version and reports best effort','({version:activePlayer.skeleton.data.version,note:previewText.textContent,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})',r=>{assert.equal(r.version,'3.8.75');assert.match(r.note,/best-effort/);assert.equal(r.finite,true);});
 
+  json3875.skeleton.spine='3.8-from-4.0-from-4.1.24';
+  fs.writeFileSync(legacyJsonFile,JSON.stringify(json3875));
+  await evaluate(`selectProject(${project(legacyJsonFile)})`);
+  await until('!!activePlayer?.skeleton && playbackControls.currentTime()>0.1');
+  await check('converted 3.8 JSON plays with its original conversion label', '({version:activePlayer.skeleton.data.version,note:previewText.textContent,finite:activePlayer.skeleton.bones.every(b=>Number.isFinite(b.worldX)&&Number.isFinite(b.worldY))})',r=>{assert.equal(r.version,'3.8-from-4.0-from-4.1.24');assert.ok(r.note.includes(r.version));assert.equal(r.finite,true);});
+
   if (process.env.SPINE_TEST_ASSET_FOLDER) {
     electron.ipcMain.removeHandler('select-folder');
     electron.ipcMain.handle('select-folder', () => process.env.SPINE_TEST_ASSET_FOLDER);

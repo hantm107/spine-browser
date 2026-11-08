@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("spineApi", {
+  exportDatabase:storage=>ipcRenderer.invoke('database-export',storage),
+  restoreDatabase:storage=>ipcRenderer.invoke('database-restore',storage),
   openImportWorkspace:file=>ipcRenderer.invoke('open-import-workspace',file),
   getAppendList:()=>ipcRenderer.invoke('append-list-get'),
   setAppendList:(file,enabled)=>ipcRenderer.invoke('append-list-set',file,enabled),

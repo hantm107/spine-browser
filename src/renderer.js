@@ -16,6 +16,24 @@ const playerHost = document.getElementById('playerHost');
 document.getElementById('importWorkspaceBtn').onclick=()=>window.spineApi.openImportWorkspace();
 
 let workspace = {};
+let databaseBusy=false;
+async function manageDatabase(action){
+  if(databaseBusy)return;
+  const message=document.getElementById('databaseMessage');message.hidden=false;
+  if(chooseFolderBtn.disabled||appendPending.size){message.textContent='Wait for the folder scan or Append update to finish, then try again.';return;}
+  rememberBrowseLocation();saveWorkspace();cancelNavigation();
+  databaseBusy=true;document.querySelector('.app').inert=true;message.textContent=action==='export'?'Exporting library…':'Restoring library…';
+  let restored=false;
+  try{
+    const storage={workspaceV1:JSON.stringify(workspace),hideSkelFiles:String(hideSkelCheckbox.checked),spineImportSettings:localStorage.getItem('spineImportSettings')};
+    const result=await window.spineApi[action==='export'?'exportDatabase':'restoreDatabase'](storage);
+    if(result&&action==='restore'){restored=true;window.location.reload();return;}
+    message.textContent=result?`Library exported to ${result.filePath}`:'Backup operation canceled.';
+  }catch(error){message.textContent=describeError(error);}
+  finally{if(!restored){databaseBusy=false;document.querySelector('.app').inert=false;saveWorkspace();}}
+}
+document.getElementById('exportDatabaseBtn').onclick=()=>manageDatabase('export');
+document.getElementById('restoreDatabaseBtn').onclick=()=>manageDatabase('restore');
 let appendBookmarks={},appendRefresh=0;
 const appendPending=new Set();
 const appendPathKey=file=>/^[a-z]:/i.test(file||'')?file.replace(/\\/g,'/').toLowerCase():(file||'').replace(/\\/g,'/');
@@ -108,6 +126,7 @@ function restoreBrowseLocation(location,request) {
   align();requestAnimationFrame(()=>{align();requestAnimationFrame(align);});
 }
 function saveWorkspace() {
+  if(databaseBusy)return;
   workspace.folder=currentFolder || workspace.folder; workspace.selected=selectedProject?.id || null;
   workspace.search=searchInput.value;workspace.favoritesOnly=favoritesOnly.checked;workspace.view=libraryView.value;
   workspace.scroll=projectList.scrollTop;

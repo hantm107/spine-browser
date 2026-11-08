@@ -30,20 +30,31 @@ function createAppendListStore(file){
     }));
   }
   function serial(fn){const result=queue.then(fn);queue=result.catch(()=>{});return result;}
-  async function set(filePath,enabled){
-    if(typeof filePath!=='string'||!path.isAbsolute(filePath))throw Error('An Append list entry must use an absolute file path.');
-    await load();const previous=records;
-    const entry=enabled?await metadata(filePath):null;
-    const id=key(entry?.fullPath||filePath);
-    records=records.filter(r=>key(r.fullPath)!==id);if(entry)records.push(entry);
-    records.sort((a,b)=>a.name.localeCompare(b.name)||a.fullPath.localeCompare(b.fullPath));
+  async function persist(next){
     const temporary=file+'.'+randomUUID()+'.tmp';
     try{
       await fs.mkdir(path.dirname(file),{recursive:true});
-      await fs.writeFile(temporary,JSON.stringify({version:1,projects:records},null,2),{flag:'wx'});await fs.rename(temporary,file);
-    }catch(error){records=previous;await fs.unlink(temporary).catch(()=>{});throw error;}
+      await fs.writeFile(temporary,JSON.stringify({version:1,projects:next},null,2),{flag:'wx'});await fs.rename(temporary,file);
+      records=next;
+    }finally{await fs.unlink(temporary).catch(()=>{});}
+  }
+  async function set(filePath,enabled){
+    if(typeof filePath!=='string'||!path.isAbsolute(filePath))throw Error('An Append list entry must use an absolute file path.');
+    await load();
+    const entry=enabled?await metadata(filePath):null;
+    const id=key(entry?.fullPath||filePath);
+    const next=records.filter(r=>key(r.fullPath)!==id);if(entry)next.push(entry);
+    next.sort((a,b)=>a.name.localeCompare(b.name)||a.fullPath.localeCompare(b.fullPath));
+    await persist(next);
     return list();
   }
-  return {list:()=>serial(list),set:(...args)=>serial(()=>set(...args)),async find(filePath){const list=await this.list();return list.find(p=>key(p.fullPath)===key(filePath));}};
+  return {list:()=>serial(list),set:(...args)=>serial(()=>set(...args)),
+    snapshot:()=>serial(async()=>{await load();return structuredClone(records);}),
+    replace:projects=>serial(async()=>{
+      if(!Array.isArray(projects)||projects.some(p=>!p||typeof p.fullPath!=='string'||!path.isAbsolute(p.fullPath)))throw Error('Invalid Append list backup.');
+      const seen=new Set();for(const project of projects){const id=key(project.fullPath);if(seen.has(id))throw Error('Duplicate Append source.');seen.add(id);}
+      await persist(structuredClone(projects));
+    }),
+    async find(filePath){const list=await this.list();return list.find(p=>key(p.fullPath)===key(filePath));}};
 }
 module.exports={createAppendListStore};
