@@ -9,6 +9,8 @@ const { groupAssets } = require('./asset-groups');
 const { scanDirectory, findSkeletonAssetPair, detectSpineFileCompatibility } = require('./project-assets');
 const {createImportService} = require('./import-service');
 const {isAppPage} = require('./app-page');
+// Multi-size .ico on Windows keeps the title bar and taskbar sharp; PNG elsewhere.
+const APP_ICON = path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 const {randomUUID} = require('node:crypto');
 const {createAppendListStore}=require('./append-list-store');
 const {createWindowStateStore}=require('./window-state');
@@ -19,7 +21,7 @@ function openImportWindow(source) {
   if(databaseBackup?.isBusy())return;
   if(typeof source==='string')pendingAppendSource=source;
   if(importWindow && !importWindow.isDestroyed()) { importWindow.focus();if(pendingAppendSource)importWindow.webContents.send('import-append-source-ready');return; }
-  importWindow = new BrowserWindow({title:'Animation Import — Spine Browser',
+  importWindow = new BrowserWindow({title:'Animation Import — Spine Browser',icon:APP_ICON,
     ...windowState.options('import',{width:1480,height:960,minWidth:1100,minHeight:740},screen.getPrimaryDisplay().workAreaSize),
     webPreferences:{preload:path.join(__dirname,'preload.js'),contextIsolation:true,nodeIntegration:false}});
   windowState.track(importWindow,'import');
@@ -29,6 +31,7 @@ function openImportWindow(source) {
 
 function createWindow() {
   const win = new BrowserWindow({
+    icon: APP_ICON,
     ...windowState.options('main',{width:1200,height:850,minWidth:980,minHeight:640},screen.getPrimaryDisplay().workAreaSize),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });

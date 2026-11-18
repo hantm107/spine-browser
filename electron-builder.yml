@@ -10,6 +10,7 @@ files:
   - README.md
   - LICENSE
 win:
+  icon: src/assets/icon.ico
   target:
     - target: portable
       arch:
