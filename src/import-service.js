@@ -67,6 +67,21 @@ async function normalizeExport(file, output, images, decoded) {
   // The 2.x preview treats an omitted attachment name as hidden. The 3.8
   // legacy importer requires an explicit null for that same hide key.
   if(/^2\./.test(data.skeleton?.spine||''))for(const animation of Object.values(data.animations||{}))for(const slot of Object.values(animation.slots||{}))for(const key of slot.attachment||[])if(!Object.prototype.hasOwnProperty.call(key,'name')){key.name=null;repairs.push('Made a legacy attachment hide key explicit.');}
+  // Spine 2.x could key flipX/flipY on bones; the 3.8 importer rejects those
+  // timelines outright. Keys that never flip are inert and are dropped. Real
+  // flips have no faithful 3.8 equivalent here, so they stop with a clear error.
+  const flipped=[];let dropped=0;
+  for(const bone of data.bones||[])for(const axis of ['flipX','flipY'])if(Object.prototype.hasOwnProperty.call(bone,axis)){
+    if(bone[axis])flipped.push(`setup pose of bone "${bone.name}" (${axis})`);else{delete bone[axis];dropped++;}
+  }
+  for(const [name,animation] of Object.entries(data.animations||{}))for(const [bone,timelines] of Object.entries(animation.bones||{}))for(const axis of ['flipX','flipY']){
+    const keys=timelines[axis];if(keys===undefined)continue;
+    const value=axis==='flipX'?'x':'y';
+    if(Array.isArray(keys)&&keys.every(key=>!key?.[value])){delete timelines[axis];dropped++;}
+    else flipped.push(`animation "${name}", bone "${bone}" (${axis})`);
+  }
+  if(flipped.length)throw Error(`This Spine 2.x export flips bones, which Spine 3.8 cannot import: ${flipped.slice(0,5).join('; ')}${flipped.length>5?` and ${flipped.length-5} more`:''}. A working copy cannot be created from it.`);
+  if(dropped)repairs.push(`Removed ${dropped} legacy flip timeline${dropped===1?'':'s'} that never flip a bone.`);
   data.skeleton ||= {}; data.skeleton.images = images.replace(/\\/g,'/') + '/';
   await fs.writeFile(output,JSON.stringify(data)); return {data,repairs};
 }

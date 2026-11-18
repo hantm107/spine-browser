@@ -56,6 +56,24 @@ test('legacy attachment hide keys use explicit null only in the working export',
   const file=path.join(root,'source.json'),output=path.join(root,'working.json');await fs.writeFile(file,original);
   const {data}=await normalizeExport(file,output,path.join(root,'images'));assert.equal(data.animations.flash.slots.art.attachment[1].name,null);assert.equal(await fs.readFile(file,'utf8'),original);
 });
+test('legacy flip timelines that never flip are dropped; real flips stop recovery',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-flip-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const source=flip=>({skeleton:{spine:'2.1.27'},bones:[{name:'root'},{name:'effects',parent:'root',flipX:false}],animations:{
+    cast:{bones:{effects:{scale:[{time:0,x:1,y:1}],flipX:[{time:0,x:false}],flipY:[{time:0,y:flip}]}}},
+    idle:{bones:{effects:{flipX:[{time:0,x:false},{time:.5}]}}}}});
+  const file=path.join(root,'source.json'),output=path.join(root,'working.json'),original=JSON.stringify(source(false));await fs.writeFile(file,original);
+  const {data,repairs}=await normalizeExport(file,output,path.join(root,'images'));
+  assert.deepEqual(data.animations.cast.bones.effects,{scale:[{time:0,x:1,y:1}]});
+  assert.deepEqual(data.animations.idle.bones.effects,{});
+  assert.equal('flipX' in data.bones[1],false);
+  assert.ok(repairs.includes('Removed 4 legacy flip timelines that never flip a bone.'));
+  assert.equal(await fs.readFile(file,'utf8'),original);
+  assert.doesNotMatch(await fs.readFile(output,'utf8'),/"flip[XY]"/);
+  const flipped=path.join(root,'flipped.json');await fs.writeFile(flipped,JSON.stringify(source(true)));
+  await assert.rejects(normalizeExport(flipped,path.join(root,'flipped-working.json'),path.join(root,'images')),/flips bones.*animation "cast", bone "effects" \(flipY\)/);
+  const setup=source(false);setup.bones[1].flipX=true;await fs.writeFile(flipped,JSON.stringify(setup));
+  await assert.rejects(normalizeExport(flipped,path.join(root,'setup-working.json'),path.join(root,'images')),/setup pose of bone "effects" \(flipX\)/);
+});
 async function appendFixture(t){
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
   const main=path.join(root,'main');await fs.mkdir(path.join(main,'images'),{recursive:true});
