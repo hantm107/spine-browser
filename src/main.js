@@ -8,6 +8,7 @@ const { createHash } = require('node:crypto');
 const { groupAssets } = require('./asset-groups');
 const { scanDirectory, findSkeletonAssetPair, detectSpineFileCompatibility } = require('./project-assets');
 const {createImportService} = require('./import-service');
+const {isAppPage} = require('./app-page');
 const {randomUUID} = require('node:crypto');
 const {createAppendListStore}=require('./append-list-store');
 const {createWindowStateStore}=require('./window-state');
@@ -90,7 +91,7 @@ app.whenReady().then(() => {
     else openImportWindow();
   });
   const importOnly=(fn)=>(event,...args)=>{
-    if(event.sender.getURL()!==pathToFileURL(path.join(__dirname,'import.html')).href)throw Error('Open the Import workspace first.');
+    if(!isAppPage(event.sender.getURL(),path.join(__dirname,'import.html')))throw Error('Open the Import workspace first.');
     return fn(...args);
   };
   ipcMain.handle('import-take-append-source',importOnly(()=>{const file=pendingAppendSource;pendingAppendSource=null;return file;}));

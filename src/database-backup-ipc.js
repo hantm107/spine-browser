@@ -1,6 +1,6 @@
 'use strict';
 const path=require('node:path');
-const {pathToFileURL}=require('node:url');
+const {isAppPage}=require('./app-page');
 const {randomUUID}=require('node:crypto');
 const {createBackup,summary,readBackup,writeBackup,restoreBackup}=require('./database-backup');
 
@@ -13,9 +13,9 @@ function applyStorage(values){
 }
 function registerDatabaseBackup({ipcMain,dialog,BrowserWindow,appendList,userData,appVersion,isImportOpen}){
   let busy=false;
-  const libraryUrl=pathToFileURL(path.join(__dirname,'index.html')).href;
+  const libraryPage=path.join(__dirname,'index.html');
   const handler=action=>async(event,storage)=>{
-    if(event.sender.getURL()!==libraryUrl||event.senderFrame!==event.sender.mainFrame)throw Error('Open the asset library to manage backups.');
+    if(!isAppPage(event.sender.getURL(),libraryPage)||event.senderFrame!==event.sender.mainFrame)throw Error('Open the asset library to manage backups.');
     if(busy)throw Error('A library backup operation is already in progress.');
     if(action==='restore'&&isImportOpen())throw Error('Close the Import animation window before restoring the library.');
     busy=true;
