@@ -29,3 +29,6 @@ replay_pid*.log
 /AGENTS.md
 /PROJECT_HANDOFF.md
 /SOURCE_AUDIT.md
+
+# Local MCP tool configuration
+/.mcp.json

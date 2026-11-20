@@ -31,7 +31,7 @@ To combine animations, open **Import animation** and follow **Open projects → 
 
 Requires Node.js and npm.
 
-App source lives in `src/`, tests in `tests/`, bundled runtimes and licenses in `vendor/`, and the user guide in `docs/`.
+App source lives in `src/` (app icon in `src/assets/`), tests in `tests/`, bundled runtimes and licenses in `vendor/`, the user guide in `docs/`, and the editable icon source in `build/`.
 
 ```sh
 npm ci
