@@ -12,7 +12,7 @@ function fixtureBackup(){
     search:'火',selected:a.id,scroll:42,browseLocations:{effects:{folder:path.dirname(a.fullPath),selected:a.id,search:'火',scroll:42,anchor:{id:a.id,offset:-10}}}};
   return createBackup({workspaceV1:JSON.stringify(workspace),hideSkelFiles:'true',spineImportSettings:'{"cliPath":"C:\\\\Spine\\\\Spine.com","editorVersion":"4.2.43"}'},[b],'1.6.1');
 }
-async function scratch(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-backup-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));return root;}
+async function scratch(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-backup-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));return root;}
 
 test('JSON round trip preserves grouped bookmarks, shared memberships, colors, folder links and preferences',async t=>{
   const root=await scratch(t),backup=fixtureBackup(),file=path.join(root,'library.json');

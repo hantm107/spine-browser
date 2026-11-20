@@ -21,7 +21,7 @@ test('legacy recovery uses the preview decoder and a supported editor without ch
 });
 
 test('custom binary headers use matching JSON instead of guessing a version substring',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-custom-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-custom-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   const file=path.join(root,'effect.skel'),header='HuaHua2.0',bytes=Buffer.concat([Buffer.from([1,Buffer.byteLength(header)+1]),Buffer.from(header)]);
   await fs.writeFile(file,bytes);assert.equal(binaryHeaderVersion(bytes),null);
   await assert.rejects(recoveryInput(file),/custom or unknown.*matching JSON/);
@@ -35,13 +35,13 @@ test('image paths cannot escape the project or use an absolute path',()=>{
   assert.equal(resource(base,'a/b.png'),path.join(base,'a','b.png'));
 });
 test('missing images fail and real image bytes resolve from nested folders',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-import-service-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-import-service-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   await fs.mkdir(path.join(root,'nested'));await fs.writeFile(path.join(root,'nested','head.PNG'),'pixels');
   assert.equal(await imageFile(root,'nested/head'),path.join(root,'nested','head.PNG'));
   await assert.rejects(imageFile(root,'missing'),/Missing image/);
 });
 test('legacy bounding box recovery changes only a working copy',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-import-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-import-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   const file=path.join(root,'source.json'),output=path.join(root,'working.json');
   const data={skeleton:{spine:'3.8'},bones:[{name:'root'}],skins:[{name:'default',attachments:{slot:{hitbox:{type:'boundingbox',vertices:[0,0,2,0,2,2,0,2]}}}}]};
   const original=JSON.stringify(data);await fs.writeFile(file,original);
@@ -51,13 +51,13 @@ test('legacy bounding box recovery changes only a working copy',async t=>{
 });
 
 test('legacy attachment hide keys use explicit null only in the working export',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-hide-key-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-hide-key-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   const original=JSON.stringify({skeleton:{spine:'2.1.27'},bones:[{name:'root'}],animations:{flash:{slots:{art:{attachment:[{name:'art'},{time:.1}]}}}}});
   const file=path.join(root,'source.json'),output=path.join(root,'working.json');await fs.writeFile(file,original);
   const {data}=await normalizeExport(file,output,path.join(root,'images'));assert.equal(data.animations.flash.slots.art.attachment[1].name,null);assert.equal(await fs.readFile(file,'utf8'),original);
 });
 test('legacy flip timelines that never flip are dropped; real flips stop recovery',async t=>{
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-flip-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-flip-recovery-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   const source=flip=>({skeleton:{spine:'2.1.27'},bones:[{name:'root'},{name:'effects',parent:'root',flipX:false}],animations:{
     cast:{bones:{effects:{scale:[{time:0,x:1,y:1}],flipX:[{time:0,x:false}],flipY:[{time:0,y:flip}]}}},
     idle:{bones:{effects:{flipX:[{time:0,x:false},{time:.5}]}}}}});
@@ -75,7 +75,7 @@ test('legacy flip timelines that never flip are dropped; real flips stop recover
   await assert.rejects(normalizeExport(flipped,path.join(root,'setup-working.json'),path.join(root,'images')),/setup pose of bone "effects" \(flipX\)/);
 });
 async function appendFixture(t){
-  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
   const main=path.join(root,'main');await fs.mkdir(path.join(main,'images'),{recursive:true});
   const project=path.join(main,'Main.spine'),staged=path.join(root,'verified.spine'),asset=path.join(root,'new.png');
   await fs.writeFile(project,'original project');await fs.writeFile(staged,'verified merged project');await fs.writeFile(asset,'new pixels');await fs.writeFile(path.join(main,'images','existing.png'),'original pixels');

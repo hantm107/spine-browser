@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {createAppendListStore}=require('../src/append-list-store');
 async function fixture(t){
- const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-list-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'spine-append-list-'));t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
  const sources=[];
  for(const name of ['a','b']){const dir=path.join(root,name);await fs.mkdir(path.join(dir,'images'),{recursive:true});const file=path.join(dir,'effect.spine');await fs.writeFile(file,'native test project');sources.push(file);}
  return {root,sources,file:path.join(root,'settings','append-list.json')};

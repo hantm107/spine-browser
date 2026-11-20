@@ -10,7 +10,7 @@ const workArea = { width:1920, height:1080 };
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-window-state-'));
-  t.after(() => fs.rmSync(root, {recursive:true,force:true}));
+  t.after(() => fs.rmSync(root, {recursive:true,force:true,maxRetries:5,retryDelay:100}));
   return path.join(root, 'profile', 'window-state.json');
 }
 function window(width, height) {

@@ -38,7 +38,7 @@ test('grouping merges alternate formats and numbered projects without merging am
 const json = (version = '4.3.13') => JSON.stringify({ skeleton: { spine: version }, bones: [{ name: 'root' }], animations: { Idle: {} } });
 async function fixture(t, files) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'spine-browser-test-'));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  t.after(() => fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   for (const [name, data] of Object.entries(files)) await fs.writeFile(path.join(dir, name), data);
   return dir;
 }
